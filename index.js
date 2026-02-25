@@ -4567,7 +4567,7 @@ var ErrorHandler = class {
 };
 __name(ErrorHandler, "ErrorHandler");
 var RequestHandler = class {
-  static async withTimeout(promise, timeoutMs = 1e4) {
+  static async withTimeout(promise, timeoutMs = 15e3) {
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error("\u8BF7\u6C42\u8D85\u65F6")), timeoutMs);
     });
@@ -4660,8 +4660,8 @@ async function handleFetchSubscription(request, env) {
   RequestHandler.validateUrl(url);
   const result = await RequestHandler.withTimeout(
     fetchSubscription(url, env),
-    15e3
-    // 15 second timeout
+    6e4
+    // 60 second timeout
   );
   return new Response(JSON.stringify({
     ...result,
@@ -4684,8 +4684,8 @@ async function handleConvertConfig(request, env) {
   }
   const result = await RequestHandler.withTimeout(
     convertConfig(content, startPort, auth, env),
-    1e4
-    // 10 second timeout
+    2e4
+    // 20 second timeout
   );
   const fileName = generateCustomFilename(configName);
   return new Response(JSON.stringify({
@@ -4748,13 +4748,13 @@ dns:
   RequestHandler.validateUrl(params.subscriptionUrl);
   subscriptionResult = await RequestHandler.withTimeout(
     fetchSubscription(params.subscriptionUrl, env),
-    15e3
-    // 15 second timeout
+    6e4
+    // 60 second timeout
   );
   const convertResult = await RequestHandler.withTimeout(
     convertConfig(subscriptionResult.content, params.startPort, params.auth, env),
-    1e4
-    // 10 second timeout
+    2e4
+    // 20 second timeout
   );
   const filename = generateCustomFilename(params.filename);
   return new Response(convertResult.config, {
