@@ -4793,6 +4793,9 @@ dns:
       }
     }
   }
+  if (!responseHeaders["profile-update-interval"]) {
+    responseHeaders["profile-update-interval"] = "24";
+  }
   return new Response(convertResult.config, { headers: responseHeaders });
 }
 __name(handleSubscribeDownload, "handleSubscribeDownload");
