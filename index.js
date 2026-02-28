@@ -1368,12 +1368,27 @@ async function fetchSubscription(url, env) {
         throw new Error("\u83B7\u53D6\u5230\u7684\u5185\u5BB9\u4E3A\u7A7A");
       }
       const processed = processContent(content);
+      const subscriptionHeaders = {};
+      const headerKeys = [
+        "subscription-userinfo",
+        "profile-update-interval",
+        "profile-web-page-url",
+        "profile-title",
+        "content-disposition"
+      ];
+      for (const key of headerKeys) {
+        const value = response.headers.get(key);
+        if (value) {
+          subscriptionHeaders[key] = value;
+        }
+      }
       console.log(`Successfully fetched subscription: ${content.length} chars`);
       return {
         content: processed.content,
         format: processed.format,
         originalFormat: processed.originalFormat,
-        size: processed.content.length
+        size: processed.content.length,
+        subscriptionHeaders
       };
     } catch (error) {
       lastError = error;
@@ -4757,16 +4772,28 @@ dns:
     // 20 second timeout
   );
   const filename = generateCustomFilename(params.filename);
-  return new Response(convertResult.config, {
-    headers: {
-      "Content-Type": "application/x-yaml",
-      "Content-Disposition": generateContentDisposition(filename + ".yaml"),
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      "X-Generated-At": (/* @__PURE__ */ new Date()).toISOString(),
-      "X-Source-Format": subscriptionResult.format || "unknown",
-      "X-Node-Count": convertResult.validNodes.toString()
+  const responseHeaders = {
+    "Content-Type": "application/x-yaml",
+    "Content-Disposition": generateContentDisposition(filename + ".yaml"),
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "X-Generated-At": (/* @__PURE__ */ new Date()).toISOString(),
+    "X-Source-Format": subscriptionResult.format || "unknown",
+    "X-Node-Count": convertResult.validNodes.toString()
+  };
+  if (subscriptionResult.subscriptionHeaders) {
+    const passthrough = [
+      "subscription-userinfo",
+      "profile-update-interval",
+      "profile-web-page-url",
+      "profile-title"
+    ];
+    for (const key of passthrough) {
+      if (subscriptionResult.subscriptionHeaders[key]) {
+        responseHeaders[key] = subscriptionResult.subscriptionHeaders[key];
+      }
     }
-  });
+  }
+  return new Response(convertResult.config, { headers: responseHeaders });
 }
 __name(handleSubscribeDownload, "handleSubscribeDownload");
 function parseSubscribeParams(searchParams) {
