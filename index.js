@@ -654,8 +654,12 @@ v2rayN\u8F6F\u4EF6\uFF1A<a href="https://github.com/2dust/v2rayN/releases/latest
 
 <div class="form-row">
     <div class="form-col">
-        <label for="startPort">\u8D77\u59CB\u7AEF\u53E3 <span class="tooltip" data-tooltip="\u4E3A\u6BCF\u4E2A\u8282\u70B9\u5206\u914D\u7684\u8D77\u59CB\u7AEF\u53E3\u53F7"></span></label>
-        <input type="number" id="startPort" min="1" max="65535" step="1" value="42000" placeholder="42000">
+        <label for="startPort">\u666E\u901A\u7AEF\u53E3\u8D77\u59CB\u503C <span class="tooltip" data-tooltip="\u666E\u901A\u8282\u70B9\u7EC4\u4ECE\u6B64\u7AEF\u53E3\u5F00\u59CB\uFF0C\u56FA\u5B9A\u5730\u533A\u7AEF\u53E3\u4F7F\u752820001-20010"></span></label>
+        <input type="number" id="startPort" min="1" max="65535" step="1" value="30001" placeholder="30001">
+    </div>
+    <div class="form-col">
+        <label for="maxPorts">\u6700\u591A\u666E\u901A\u7AEF\u53E3\u6570 <span class="tooltip" data-tooltip="\u8282\u70B9\u5C06\u5E73\u5747\u5206\u914D\u5230\u8FD9\u4E9B\u7AEF\u53E3\u7EC4\uFF0C\u8303\u56F41-100"></span></label>
+        <input type="number" id="maxPorts" min="1" max="100" step="1" value="20" placeholder="20">
     </div>
 </div>
 
@@ -890,6 +894,7 @@ class ClashConverter {
     async processConfig() {
         const inputYAML = document.getElementById('inputYAML').value;
         const startPort = parseInt(document.getElementById('startPort').value);
+        const maxPorts = parseInt(document.getElementById('maxPorts').value);
         const socksUsername = document.getElementById('socksUsername').value.trim();
         const socksPassword = document.getElementById('socksPassword').value.trim();
         const customConfigName = document.getElementById('configName').value.trim();
@@ -904,6 +909,11 @@ class ClashConverter {
 
         if (!startPort || startPort < 1 || startPort > 65535) {
             this.showError('\u26A0\uFE0F \u8BF7\u8F93\u5165\u6709\u6548\u7684\u7AEF\u53E3\u53F7\uFF081-65535\uFF09\uFF01');
+            return;
+        }
+
+        if (!maxPorts || maxPorts < 1 || maxPorts > 100) {
+            this.showError('\u26A0\uFE0F \u8BF7\u8F93\u51651-100\u4E4B\u95F4\u7684\u6700\u591A\u7AEF\u53E3\u6570\uFF01');
             return;
         }
 
@@ -924,6 +934,7 @@ class ClashConverter {
                 body: JSON.stringify({
                     content: inputYAML,
                     startPort,
+                    maxPorts,
                     auth: hasUsername ? { username: socksUsername, password: socksPassword } : null,
                     configName: customConfigName
                 })
@@ -968,8 +979,14 @@ class ClashConverter {
 
             // Show success message
             const authInfo = hasUsername ? ', \u8BA4\u8BC1\uFF1A' + socksUsername + '/' + socksPassword : '\uFF0C\u65E0\u9700\u8BA4\u8BC1';
-            let message = '\u2705 \u6210\u529F\u8F6C\u6362 ' + data.validNodes + ' \u4E2A\u6709\u6548\u8282\u70B9\uFF01\u7AEF\u53E3\u8303\u56F4\uFF1A' + startPort + ' - ' + (startPort + data.validNodes - 1) + authInfo;
-            
+            let message = '\u2705 \u6210\u529F\u5904\u7406 ' + data.validNodes + ' \u4E2A\u6709\u6548\u8282\u70B9\uFF0C\u751F\u6210 ' + data.genericPortCount + ' \u4E2A\u666E\u901A\u7AEF\u53E3\u7EC4\u548C ' + data.regionPortCount + ' \u4E2A\u56FA\u5B9A\u5730\u533A\u7AEF\u53E3\uFF01\u666E\u901A\u7AEF\u53E3\uFF1A' + data.portRange.start + ' - ' + data.portRange.end + authInfo;
+            message += '<br>\u{1F310} \u786E\u8BA4 ' + data.uniqueIPv4Count + ' \u4E2A\u552F\u4E00 IPv4';
+            message += '<br>\u{1F4CD} \u56FA\u5B9A\u5730\u533A\u7AEF\u53E3\uFF1AHK 20001 / TW 20002 / US 20003 / JP 20004 / KR 20005 / SG 20006 / GB 20007 / DE 20008 / MO 20009 / ID 20010';
+
+            if (data.unresolvedHostCount > 0) {
+                message += '\uFF0C' + data.unresolvedHostCount + ' \u4E2A\u57DF\u540D\u672A\u89E3\u6790\uFF08\u5DF2\u6309\u57DF\u540D\u4FDD\u7559\uFF09';
+            }
+
             if (data.filteredNodes > 0) {
                 message += '<br>\u{1F9F9} \u5DF2\u8FC7\u6EE4 ' + data.filteredNodes + ' \u6761\u975E\u8282\u70B9\u4FE1\u606F';
             }
@@ -980,6 +997,7 @@ class ClashConverter {
             this.generateAndShowSubscribeUrl({
                 subscriptionUrl: this.getCurrentSubscriptionUrl(),
                 startPort,
+                maxPorts,
                 hasAuth: hasUsername,
                 username: socksUsername,
                 password: socksPassword,
@@ -1121,8 +1139,12 @@ class ClashConverter {
             });
             
             // Add port if not default
-            if (params.startPort && params.startPort !== 42000) {
+            if (params.startPort && params.startPort !== 30001) {
                 searchParams.set('port', params.startPort.toString());
+            }
+
+            if (params.maxPorts && params.maxPorts !== 20) {
+                searchParams.set('maxPorts', params.maxPorts.toString());
             }
 
             // Add auth if provided
@@ -1147,8 +1169,12 @@ class ClashConverter {
         });
 
         // Add port if not default
-        if (params.startPort && params.startPort !== 42000) {
+        if (params.startPort && params.startPort !== 30001) {
             searchParams.set('port', params.startPort.toString());
+        }
+
+        if (params.maxPorts && params.maxPorts !== 20) {
+            searchParams.set('maxPorts', params.maxPorts.toString());
         }
 
         // Add auth if provided
@@ -4354,8 +4380,27 @@ var jsYaml = {
 var js_yaml_default = jsYaml;
 
 // src/services/converter.js
-async function convertConfig(content, startPort, auth, env) {
+var HEALTH_CHECK_URL = "https://cp.cloudflare.com/generate_204";
+var DNS_QUERY_URL = "https://cloudflare-dns.com/dns-query";
+var MAX_DNS_LOOKUPS = 40;
+var DEFAULT_START_PORT = 30001;
+var DEFAULT_MAX_PORTS = 20;
+var MAX_PORT_GROUPS = 100;
+var REGION_PORTS = [
+  { code: "HK", port: 20001, pattern: /🇭🇰|香港|hong[\s_-]*kong|(?:^|[^a-z])hk(?:$|[^a-z])/i },
+  { code: "TW", port: 20002, pattern: /🇹🇼|台湾|臺灣|taiwan|(?:^|[^a-z])tw(?:$|[^a-z])/i },
+  { code: "US", port: 20003, pattern: /🇺🇸|美国|美國|united[\s_-]*states|america|(?:^|[^a-z])(?:usa|us)(?:$|[^a-z])/i },
+  { code: "JP", port: 20004, pattern: /🇯🇵|日本|japan|(?:^|[^a-z])jp(?:$|[^a-z])/i },
+  { code: "KR", port: 20005, pattern: /🇰🇷|韩国|韓國|south[\s_-]*korea|korea|(?:^|[^a-z])kr(?:$|[^a-z])/i },
+  { code: "SG", port: 20006, pattern: /🇸🇬|新加坡|singapore|(?:^|[^a-z])sg(?:$|[^a-z])/i },
+  { code: "GB", port: 20007, pattern: /🇬🇧|英国|英國|united[\s_-]*kingdom|great[\s_-]*britain|britain|(?:^|[^a-z])(?:gb|uk)(?:$|[^a-z])/i },
+  { code: "DE", port: 20008, pattern: /🇩🇪|德国|德國|germany|(?:^|[^a-z])de(?:$|[^a-z])/i },
+  { code: "MO", port: 20009, pattern: /🇲🇴|澳门|澳門|macao|macau|(?:^|[^a-z])mo(?:$|[^a-z])/i },
+  { code: "ID", port: 20010, pattern: /🇮🇩|印度尼西亚|印度尼西亞|印尼|indonesia|(?:^|[^a-z])id(?:$|[^a-z])/i }
+];
+async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts = DEFAULT_MAX_PORTS, auth, env, fetchImpl = fetch) {
   try {
+    ({ startPort, maxPorts } = normalizePortOptions(startPort, maxPorts));
     const yamlData = js_yaml_default.load(content);
     if (!yamlData || !yamlData.proxies || !Array.isArray(yamlData.proxies)) {
       throw new Error("\u914D\u7F6E\u6587\u4EF6\u683C\u5F0F\u9519\u8BEF\uFF0C\u672A\u627E\u5230\u6709\u6548\u7684\u4EE3\u7406\u5217\u8868");
@@ -4368,9 +4413,22 @@ async function convertConfig(content, startPort, auth, env) {
     if (validProxies.length === 0) {
       throw new Error("\u914D\u7F6E\u6587\u4EF6\u4E2D\u6CA1\u6709\u627E\u5230\u6709\u6548\u7684\u4EE3\u7406\u8282\u70B9");
     }
-    const numProxies = validProxies.length;
-    if (startPort + numProxies - 1 > 65535) {
-      throw new Error(`\u7AEF\u53E3\u8303\u56F4\u8D85\u51FA\u9650\u5236\uFF01\u9700\u8981 ${numProxies} \u4E2A\u7AEF\u53E3\uFF0C\u4F46\u4ECE ${startPort} \u5F00\u59CB\u4F1A\u8D85\u8FC765535`);
+    const genericPortCount = Math.min(maxPorts, validProxies.length);
+    const genericEndPort = startPort + genericPortCount - 1;
+    if (genericEndPort > 65535) {
+      throw new Error(`\u7AEF\u53E3\u8303\u56F4\u8D85\u51FA\u9650\u5236\uFF01\u9700\u8981 ${genericPortCount} \u4E2A\u666E\u901A\u7AEF\u53E3\uFF0C\u4F46\u4ECE ${startPort} \u5F00\u59CB\u4F1A\u8D85\u8FC765535`);
+    }
+    if (startPort <= REGION_PORTS.at(-1).port && genericEndPort >= REGION_PORTS[0].port) {
+      throw new Error(`\u666E\u901A\u7AEF\u53E3\u8303\u56F4 ${startPort}-${genericEndPort} \u4E0E\u56FA\u5B9A\u5730\u533A\u7AEF\u53E3 20001-20010 \u51B2\u7A81`);
+    }
+    const failover = await resolveProxyGroups(validProxies, startPort, maxPorts, fetchImpl);
+    if (auth && auth.username && auth.password) {
+      for (const listener of failover.listeners) {
+        listener.users = [{
+          username: auth.username,
+          password: auth.password
+        }];
+      }
     }
     const newConfig = {
       "allow-lan": true,
@@ -4389,33 +4447,25 @@ async function convertConfig(content, startPort, auth, env) {
         "default-nameserver": ["114.114.114.114"],
         "nameserver": ["https://doh.pub/dns-query"]
       },
-      "listeners": [],
-      "proxies": validProxies
+      "listeners": failover.listeners,
+      "proxies": validProxies,
+      "proxy-groups": failover.proxyGroups
     };
-    newConfig.listeners = Array.from({ length: numProxies }, (_, i) => {
-      const listener = {
-        name: `mixed${i}`,
-        type: "mixed",
-        port: startPort + i,
-        proxy: validProxies[i].name
-      };
-      if (auth && auth.username && auth.password) {
-        listener.users = [{
-          username: auth.username,
-          password: auth.password
-        }];
-      }
-      return listener;
-    });
     const configYAML = js_yaml_default.dump(newConfig);
     return {
       config: configYAML,
-      validNodes: numProxies,
+      validNodes: validProxies.length,
+      listenerCount: failover.listeners.length,
+      genericPortCount: failover.genericPortCount,
+      regionPortCount: REGION_PORTS.length,
+      regionPorts: Object.fromEntries(REGION_PORTS.map((region) => [region.code, region.port])),
+      uniqueIPv4Count: failover.uniqueIPv4Count,
+      unresolvedHostCount: failover.unresolvedHostCount,
       filteredNodes: filteredCount,
       originalNodes: originalCount,
       portRange: {
         start: startPort,
-        end: startPort + numProxies - 1
+        end: genericEndPort
       }
     };
   } catch (error) {
@@ -4427,6 +4477,188 @@ async function convertConfig(content, startPort, auth, env) {
   }
 }
 __name(convertConfig, "convertConfig");
+async function resolveProxyGroups(proxies, startPort, maxPorts, fetchImpl = fetch) {
+  const proxyNames = proxies.map((proxy) => proxy.name);
+  const usedNames = new Set(proxyNames);
+  const autoBestName = createUniqueName("AUTO-BEST", usedNames);
+  const resolvedHosts = await resolveProxyHosts(proxies, fetchImpl);
+  const unresolvedHosts = /* @__PURE__ */ new Set();
+  const metadata = proxies.map((proxy) => {
+    const server = String(proxy.server);
+    const normalizedServer = server.toLowerCase();
+    const ipv4 = isIPv4(server) ? server : resolvedHosts.get(normalizedServer);
+    if (!ipv4 && !isIPv4(server)) {
+      unresolvedHosts.add(normalizedServer);
+    }
+    return {
+      name: proxy.name,
+      ipv4,
+      identity: ipv4 ? `ip:${ipv4}` : `host:${normalizedServer}`,
+      region: matchRegion(proxy.name)
+    };
+  });
+  const genericGroups = distributeProxies(metadata, Math.min(maxPorts, metadata.length));
+  const proxyGroups = [createUrlTestGroup(autoBestName, proxyNames)];
+  const listeners = [];
+  const addPortGroup = (port, baseName, nodes) => {
+    const nodeNames = nodes.map((node) => node.name);
+    const fallbackMembers = [];
+    if (nodeNames.length > 1) {
+      const bestName = createUniqueName(`${baseName}-BEST`, usedNames);
+      proxyGroups.push(createUrlTestGroup(bestName, nodeNames, true));
+      fallbackMembers.push(bestName);
+    }
+    fallbackMembers.push(...nodeNames, autoBestName);
+    const groupName = createUniqueName(baseName, usedNames);
+    proxyGroups.push(createFallbackGroup(groupName, fallbackMembers));
+    listeners.push({
+      name: `mixed-${port}`,
+      type: "mixed",
+      port,
+      proxy: groupName
+    });
+  };
+  genericGroups.forEach((group, index) => addPortGroup(startPort + index, `PORT-${startPort + index}`, group.nodes));
+  for (const region of REGION_PORTS) {
+    addPortGroup(region.port, `REGION-${region.code}`, metadata.filter((node) => node.region === region.code));
+  }
+  return {
+    listeners,
+    proxyGroups,
+    genericPortCount: genericGroups.length,
+    uniqueIPv4Count: new Set(metadata.map((node) => node.ipv4).filter(Boolean)).size,
+    unresolvedHostCount: unresolvedHosts.size
+  };
+}
+__name(resolveProxyGroups, "resolveProxyGroups");
+function distributeProxies(metadata, groupCount) {
+  const groups = Array.from({ length: groupCount }, (_, index) => ({
+    index,
+    nodes: [],
+    identities: /* @__PURE__ */ new Set(),
+    regions: /* @__PURE__ */ new Map()
+  }));
+  const regionOrder = new Map(REGION_PORTS.map((region, index) => [region.code, index]));
+  const nodes = [...metadata].sort((left, right) => {
+    const leftRegion = regionOrder.get(left.region) ?? REGION_PORTS.length;
+    const rightRegion = regionOrder.get(right.region) ?? REGION_PORTS.length;
+    return leftRegion - rightRegion || compareText(left.identity, right.identity) || compareText(left.name, right.name);
+  });
+  for (const node of nodes) {
+    const regionKey = node.region || "OTHER";
+    const target = groups.reduce((best, group) => {
+      if (!best) return group;
+      const groupScore = [group.nodes.length, group.identities.has(node.identity) ? 1 : 0, group.regions.get(regionKey) || 0, group.index];
+      const bestScore = [best.nodes.length, best.identities.has(node.identity) ? 1 : 0, best.regions.get(regionKey) || 0, best.index];
+      for (let index = 0; index < groupScore.length; index++) {
+        if (groupScore[index] !== bestScore[index]) {
+          return groupScore[index] < bestScore[index] ? group : best;
+        }
+      }
+      return best;
+    }, null);
+    target.nodes.push(node);
+    target.identities.add(node.identity);
+    target.regions.set(regionKey, (target.regions.get(regionKey) || 0) + 1);
+  }
+  return groups;
+}
+__name(distributeProxies, "distributeProxies");
+function createUrlTestGroup(name, proxies, hidden = false) {
+  return {
+    name,
+    type: "url-test",
+    proxies,
+    url: HEALTH_CHECK_URL,
+    "expected-status": 204,
+    interval: 300,
+    timeout: 5e3,
+    tolerance: 100,
+    lazy: false,
+    hidden
+  };
+}
+__name(createUrlTestGroup, "createUrlTestGroup");
+function createFallbackGroup(name, proxies) {
+  return {
+    name,
+    type: "fallback",
+    proxies,
+    url: HEALTH_CHECK_URL,
+    "expected-status": 204,
+    interval: 300,
+    timeout: 5e3,
+    lazy: false
+  };
+}
+__name(createFallbackGroup, "createFallbackGroup");
+function matchRegion(name) {
+  const nodeName = String(name || "");
+  return REGION_PORTS.find((region) => region.pattern.test(nodeName))?.code || null;
+}
+__name(matchRegion, "matchRegion");
+function normalizePortOptions(startPort = DEFAULT_START_PORT, maxPorts = DEFAULT_MAX_PORTS) {
+  const normalizedStartPort = startPort === "" || startPort == null ? DEFAULT_START_PORT : Number(startPort);
+  const normalizedMaxPorts = maxPorts === "" || maxPorts == null ? DEFAULT_MAX_PORTS : Number(maxPorts);
+  if (!Number.isInteger(normalizedStartPort) || normalizedStartPort < 1 || normalizedStartPort > 65535) {
+    throw new Error("\u7AEF\u53E3\u8303\u56F4\u5FC5\u987B\u57281-65535\u4E4B\u95F4");
+  }
+  if (!Number.isInteger(normalizedMaxPorts) || normalizedMaxPorts < 1 || normalizedMaxPorts > MAX_PORT_GROUPS) {
+    throw new Error(`\u7AEF\u53E3\u6570\u91CF\u5FC5\u987B\u57281-${MAX_PORT_GROUPS}\u4E4B\u95F4`);
+  }
+  return { startPort: normalizedStartPort, maxPorts: normalizedMaxPorts };
+}
+__name(normalizePortOptions, "normalizePortOptions");
+async function resolveProxyHosts(proxies, fetchImpl) {
+  const hosts = Array.from(new Set(proxies.map((proxy) => String(proxy.server).toLowerCase()).filter((server) => !isIPv4(server))));
+  // ponytail: cap Worker subrequests; excess hosts stay grouped by hostname.
+  const results = await Promise.all(hosts.slice(0, MAX_DNS_LOOKUPS).map(async (host) => {
+    try {
+      const url = new URL(DNS_QUERY_URL);
+      url.searchParams.set("name", host);
+      url.searchParams.set("type", "A");
+      const response = await fetchImpl(url.toString(), {
+        headers: { "Accept": "application/dns-json" }
+      });
+      if (!response.ok) {
+        return [host, null];
+      }
+      const data = await response.json();
+      const addresses = (data.Answer || []).filter((answer) => answer.type === 1 && isIPv4(answer.data)).map((answer) => answer.data).sort(compareIPv4);
+      return [host, addresses[0] || null];
+    } catch (error) {
+      console.warn(`DNS resolve failed for ${host}:`, error.message);
+      return [host, null];
+    }
+  }));
+  return new Map(results);
+}
+__name(resolveProxyHosts, "resolveProxyHosts");
+function isIPv4(value) {
+  const parts = String(value).split(".");
+  return parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
+}
+__name(isIPv4, "isIPv4");
+function compareIPv4(left, right) {
+  const leftValue = left.split(".").reduce((value, part) => value * 256 + Number(part), 0);
+  const rightValue = right.split(".").reduce((value, part) => value * 256 + Number(part), 0);
+  return leftValue - rightValue;
+}
+__name(compareIPv4, "compareIPv4");
+function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+__name(compareText, "compareText");
+function createUniqueName(baseName, usedNames) {
+  let name = baseName;
+  let suffix = 2;
+  while (usedNames.has(name)) {
+    name = `${baseName}-${suffix++}`;
+  }
+  usedNames.add(name);
+  return name;
+}
+__name(createUniqueName, "createUniqueName");
 function createNodeFilter() {
   const infoKeywords = [
     // Traffic related
@@ -4434,9 +4666,6 @@ function createNodeFilter() {
     "\u5DF2\u7528\u6D41\u91CF",
     "\u603B\u6D41\u91CF",
     "\u6D41\u91CF\u91CD\u7F6E",
-    "GB",
-    "MB",
-    "TB",
     "\u4E0A\u4F20",
     "\u4E0B\u8F7D",
     "\u6D41\u91CF\u7EDF\u8BA1",
@@ -4563,7 +4792,7 @@ var ErrorHandler = class {
     } else if (error.message.includes("\u914D\u7F6E\u6587\u4EF6\u683C\u5F0F\u9519\u8BEF") || error.message.includes("YAML")) {
       status = 400;
       userMessage = error.message;
-    } else if (error.message.includes("\u7AEF\u53E3\u8303\u56F4")) {
+    } else if (error.message.includes("\u7AEF\u53E3\u8303\u56F4") || error.message.includes("\u7AEF\u53E3\u6570\u91CF") || error.message.includes("\u56FA\u5B9A\u5730\u533A\u7AEF\u53E3")) {
       status = 400;
       userMessage = error.message;
     }
@@ -4583,13 +4812,14 @@ var ErrorHandler = class {
 __name(ErrorHandler, "ErrorHandler");
 var RequestHandler = class {
   static async withTimeout(promise, timeoutMs = 15e3) {
+    let timeoutId;
     const timeoutPromise = new Promise((_, reject) => {
-      setTimeout(() => reject(new Error("\u8BF7\u6C42\u8D85\u65F6")), timeoutMs);
+      timeoutId = setTimeout(() => reject(new Error("\u8BF7\u6C42\u8D85\u65F6")), timeoutMs);
     });
     try {
       return await Promise.race([promise, timeoutPromise]);
-    } catch (error) {
-      throw error;
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
   /**
@@ -4690,15 +4920,13 @@ async function handleFetchSubscription(request, env) {
 __name(handleFetchSubscription, "handleFetchSubscription");
 async function handleConvertConfig(request, env) {
   const body = await request.json();
-  const { content, startPort, auth, configName } = body;
+  const { content, auth, configName } = body;
+  const { startPort, maxPorts } = normalizePortOptions(body.startPort, body.maxPorts);
   if (!content) {
     throw new Error("Content is required");
   }
-  if (!startPort || startPort < 1 || startPort > 65535) {
-    throw new Error("Valid start port is required (1-65535)");
-  }
   const result = await RequestHandler.withTimeout(
-    convertConfig(content, startPort, auth, env),
+    convertConfig(content, startPort, maxPorts, auth, env),
     2e4
     // 20 second timeout
   );
@@ -4727,7 +4955,7 @@ async function handleSubscribeDownload(request, env) {
 # 
 # 1. \u8FD4\u56DE\u7F51\u9875\u754C\u9762: ${url.origin}
 # 2. \u5728"\u624B\u52A8\u8F93\u5165"\u6807\u7B7E\u9875\u4E2D\u7C98\u8D34\u60A8\u7684Clash\u914D\u7F6E
-# 3. \u8BBE\u7F6E\u76F8\u540C\u7684\u53C2\u6570\uFF1A\u7AEF\u53E3=${params.startPort}${params.auth ? `, \u8BA4\u8BC1=${params.auth.username}/**` : ", \u65E0\u8BA4\u8BC1"}
+# 3. \u8BBE\u7F6E\u76F8\u540C\u7684\u53C2\u6570\uFF1A\u7AEF\u53E3=${params.startPort}, \u6700\u591A\u7AEF\u53E3\u6570=${params.maxPorts}${params.auth ? `, \u8BA4\u8BC1=${params.auth.username}/**` : ", \u65E0\u8BA4\u8BC1"}
 # 4. \u70B9\u51FB"\u751F\u6210Socks5\u914D\u7F6E\u6587\u4EF6"\u6309\u94AE
 # 5. \u4E0B\u8F7D\u751F\u6210\u7684\u914D\u7F6E\u6587\u4EF6
 #
@@ -4767,7 +4995,7 @@ dns:
     // 60 second timeout
   );
   const convertResult = await RequestHandler.withTimeout(
-    convertConfig(subscriptionResult.content, params.startPort, params.auth, env),
+    convertConfig(subscriptionResult.content, params.startPort, params.maxPorts, params.auth, env),
     2e4
     // 20 second timeout
   );
@@ -4778,7 +5006,8 @@ dns:
     "Cache-Control": "no-cache, no-store, must-revalidate",
     "X-Generated-At": (/* @__PURE__ */ new Date()).toISOString(),
     "X-Source-Format": subscriptionResult.format || "unknown",
-    "X-Node-Count": convertResult.validNodes.toString()
+    "X-Node-Count": convertResult.validNodes.toString(),
+    "X-Port-Count": convertResult.listenerCount.toString()
   };
   if (subscriptionResult.subscriptionHeaders) {
     const passthrough = [
@@ -4807,11 +5036,7 @@ function parseSubscribeParams(searchParams) {
     if (!hash) {
       throw new Error("\u624B\u52A8\u8F93\u5165\u6A21\u5F0F\u9700\u8981\u5185\u5BB9\u6807\u8BC6hash\u53C2\u6570");
     }
-    const portParam2 = searchParams.get("port");
-    const startPort2 = portParam2 ? parseInt(portParam2) : 42e3;
-    if (startPort2 < 1 || startPort2 > 65535) {
-      throw new Error("\u7AEF\u53E3\u8303\u56F4\u5FC5\u987B\u57281-65535\u4E4B\u95F4");
-    }
+    const { startPort: startPort2, maxPorts: maxPorts2 } = normalizePortOptions(searchParams.get("port"), searchParams.get("maxPorts"));
     let auth2 = null;
     const encodedAuth2 = searchParams.get("auth");
     if (encodedAuth2) {
@@ -4830,6 +5055,7 @@ function parseSubscribeParams(searchParams) {
       mode: "manual",
       hash,
       startPort: startPort2,
+      maxPorts: maxPorts2,
       auth: auth2,
       filename: filename2,
       subscriptionUrl: null
@@ -4846,11 +5072,7 @@ function parseSubscribeParams(searchParams) {
   } catch (error) {
     throw new Error("URL\u53C2\u6570\u683C\u5F0F\u9519\u8BEF\uFF0C\u8BF7\u63D0\u4F9B\u6709\u6548\u7684Base64\u7F16\u7801");
   }
-  const portParam = searchParams.get("port");
-  const startPort = portParam ? parseInt(portParam) : 42e3;
-  if (startPort < 1 || startPort > 65535) {
-    throw new Error("\u7AEF\u53E3\u8303\u56F4\u5FC5\u987B\u57281-65535\u4E4B\u95F4");
-  }
+  const { startPort, maxPorts } = normalizePortOptions(searchParams.get("port"), searchParams.get("maxPorts"));
   let auth = null;
   const encodedAuth = searchParams.get("auth");
   if (encodedAuth) {
@@ -4868,6 +5090,7 @@ function parseSubscribeParams(searchParams) {
   return {
     subscriptionUrl,
     startPort,
+    maxPorts,
     auth,
     filename
   };
