@@ -980,12 +980,9 @@ class ClashConverter {
             // Show success message
             const authInfo = hasUsername ? ', \u8BA4\u8BC1\uFF1A' + socksUsername + '/' + socksPassword : '\uFF0C\u65E0\u9700\u8BA4\u8BC1';
             let message = '\u2705 \u6210\u529F\u5904\u7406 ' + data.validNodes + ' \u4E2A\u6709\u6548\u8282\u70B9\uFF0C\u751F\u6210 ' + data.genericPortCount + ' \u4E2A\u666E\u901A\u7AEF\u53E3\u7EC4\u548C ' + data.regionPortCount + ' \u4E2A\u56FA\u5B9A\u5730\u533A\u7AEF\u53E3\uFF01\u666E\u901A\u7AEF\u53E3\uFF1A' + data.portRange.start + ' - ' + data.portRange.end + authInfo;
-            message += '<br>\u{1F310} \u786E\u8BA4 ' + data.uniqueIPv4Count + ' \u4E2A\u552F\u4E00 IPv4';
+            message += '<br>\u{1F310} \u8BC6\u522B ' + data.uniqueEndpointCount + ' \u4E2A\u72EC\u7ACB\u8FDE\u63A5\u7AEF\u70B9\uFF08\u6309 server \u533A\u5206\uFF09';
             message += '<br>\u{1F4CD} \u56FA\u5B9A\u5730\u533A\u7AEF\u53E3\uFF1AHK 20001 / TW 20002 / US 20003 / JP 20004 / KR 20005 / SG 20006 / GB 20007 / DE 20008 / MO 20009 / ID 20010';
 
-            if (data.unresolvedHostCount > 0) {
-                message += '\uFF0C' + data.unresolvedHostCount + ' \u4E2A\u57DF\u540D\u672A\u89E3\u6790\uFF08\u5DF2\u6309\u57DF\u540D\u4FDD\u7559\uFF09';
-            }
 
             if (data.filteredNodes > 0) {
                 message += '<br>\u{1F9F9} \u5DF2\u8FC7\u6EE4 ' + data.filteredNodes + ' \u6761\u975E\u8282\u70B9\u4FE1\u606F';
@@ -4381,11 +4378,10 @@ var js_yaml_default = jsYaml;
 
 // src/services/converter.js
 var HEALTH_CHECK_URL = "https://cp.cloudflare.com/generate_204";
-var DNS_QUERY_URL = "https://cloudflare-dns.com/dns-query";
-var MAX_DNS_LOOKUPS = 40;
 var DEFAULT_START_PORT = 30001;
 var DEFAULT_MAX_PORTS = 20;
 var MAX_PORT_GROUPS = 100;
+var PREFERRED_REGION_RANKS = new Map(["HK", "US", "TW", "SG", "KR", "JP"].map((code, index) => [code, index]));
 var REGION_PORTS = [
   { code: "HK", port: 20001, pattern: /🇭🇰|香港|hong[\s_-]*kong|(?:^|[^a-z])hk(?:$|[^a-z])/i },
   { code: "TW", port: 20002, pattern: /🇹🇼|台湾|臺灣|taiwan|(?:^|[^a-z])tw(?:$|[^a-z])/i },
@@ -4398,7 +4394,7 @@ var REGION_PORTS = [
   { code: "MO", port: 20009, pattern: /🇲🇴|澳门|澳門|macao|macau|(?:^|[^a-z])mo(?:$|[^a-z])/i },
   { code: "ID", port: 20010, pattern: /🇮🇩|印度尼西亚|印度尼西亞|印尼|indonesia|(?:^|[^a-z])id(?:$|[^a-z])/i }
 ];
-async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts = DEFAULT_MAX_PORTS, auth, env, fetchImpl = fetch) {
+async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts = DEFAULT_MAX_PORTS, auth, env) {
   try {
     ({ startPort, maxPorts } = normalizePortOptions(startPort, maxPorts));
     const yamlData = js_yaml_default.load(content);
@@ -4421,7 +4417,7 @@ async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts =
     if (startPort <= REGION_PORTS.at(-1).port && genericEndPort >= REGION_PORTS[0].port) {
       throw new Error(`\u666E\u901A\u7AEF\u53E3\u8303\u56F4 ${startPort}-${genericEndPort} \u4E0E\u56FA\u5B9A\u5730\u533A\u7AEF\u53E3 20001-20010 \u51B2\u7A81`);
     }
-    const failover = await resolveProxyGroups(validProxies, startPort, maxPorts, fetchImpl);
+    const failover = await resolveProxyGroups(validProxies, startPort, maxPorts);
     if (auth && auth.username && auth.password) {
       for (const listener of failover.listeners) {
         listener.users = [{
@@ -4439,6 +4435,9 @@ async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts =
           "enabled": true,
           "allow-origins": ["*"]
         }
+      },
+      "profile": {
+        "store-selected": true
       },
       "dns": {
         "enable": true,
@@ -4459,8 +4458,7 @@ async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts =
       genericPortCount: failover.genericPortCount,
       regionPortCount: REGION_PORTS.length,
       regionPorts: Object.fromEntries(REGION_PORTS.map((region) => [region.code, region.port])),
-      uniqueIPv4Count: failover.uniqueIPv4Count,
-      unresolvedHostCount: failover.unresolvedHostCount,
+      uniqueEndpointCount: failover.uniqueEndpointCount,
       filteredNodes: filteredCount,
       originalNodes: originalCount,
       portRange: {
@@ -4477,57 +4475,62 @@ async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts =
   }
 }
 __name(convertConfig, "convertConfig");
-async function resolveProxyGroups(proxies, startPort, maxPorts, fetchImpl = fetch) {
-  const proxyNames = proxies.map((proxy) => proxy.name);
-  const usedNames = new Set(proxyNames);
-  const autoBestName = createUniqueName("AUTO-BEST", usedNames);
-  const resolvedHosts = await resolveProxyHosts(proxies, fetchImpl);
-  const unresolvedHosts = /* @__PURE__ */ new Set();
-  const metadata = proxies.map((proxy) => {
-    const server = String(proxy.server);
-    const normalizedServer = server.toLowerCase();
-    const ipv4 = isIPv4(server) ? server : resolvedHosts.get(normalizedServer);
-    if (!ipv4 && !isIPv4(server)) {
-      unresolvedHosts.add(normalizedServer);
+async function resolveProxyGroups(proxies, startPort, maxPorts) {
+  const sourceRanks = new Map();
+  const metadata = proxies.map((proxy, originalIndex) => {
+    const sourceName = extractSourceName(proxy.name);
+    if (sourceName !== null && !sourceRanks.has(sourceName)) {
+      sourceRanks.set(sourceName, sourceRanks.size);
     }
+    const region = matchRegion(proxy.name);
     return {
       name: proxy.name,
-      ipv4,
-      identity: ipv4 ? `ip:${ipv4}` : `host:${normalizedServer}`,
-      region: matchRegion(proxy.name)
+      endpointKey: normalizeEndpointKey(proxy.server),
+      nodeHash: createNodeHash(proxy),
+      sourceName,
+      sourceRank: sourceName === null ? 0 : sourceRanks.get(sourceName),
+      region,
+      regionRank: getPreferredRegionRank(region),
+      originalIndex
     };
   });
+  const unnamedSourceRank = sourceRanks.size;
+  for (const node of metadata) {
+    if (node.sourceName === null) node.sourceRank = unnamedSourceRank;
+  }
+  const sortedMetadata = [...metadata].sort(compareProxyMetadata);
+  const regionNodes = new Map(REGION_PORTS.map((region) => [region.code, []]));
+  for (const node of sortedMetadata) {
+    if (regionNodes.has(node.region)) regionNodes.get(node.region).push(node);
+  }
+  const proxyNames = sortedMetadata.map((node) => node.name);
+  const usedNames = new Set(proxyNames);
+  const autoBestName = createUniqueName("AUTO-BEST", usedNames);
   const genericGroups = distributeProxies(metadata, Math.min(maxPorts, metadata.length));
   const proxyGroups = [createUrlTestGroup(autoBestName, proxyNames)];
   const listeners = [];
   const addPortGroup = (port, baseName, nodes) => {
     const nodeNames = nodes.map((node) => node.name);
-    const fallbackMembers = [];
-    if (nodeNames.length > 1) {
-      const bestName = createUniqueName(`${baseName}-BEST`, usedNames);
-      proxyGroups.push(createUrlTestGroup(bestName, nodeNames, true));
-      fallbackMembers.push(bestName);
-    }
-    fallbackMembers.push(...nodeNames, autoBestName);
-    const groupName = createUniqueName(baseName, usedNames);
-    proxyGroups.push(createFallbackGroup(groupName, fallbackMembers));
+    const selectName = createUniqueName(baseName, usedNames);
+    proxyGroups.push(createSelectGroup(selectName, nodeNames.length > 0 ? nodeNames : [autoBestName]));
+    const routeName = createUniqueName(`${selectName}-ROUTE`, usedNames);
+    proxyGroups.push(createFallbackGroup(routeName, [selectName, ...nodeNames, autoBestName], true));
     listeners.push({
       name: `mixed-${port}`,
       type: "mixed",
       port,
-      proxy: groupName
+      proxy: routeName
     });
   };
   genericGroups.forEach((group, index) => addPortGroup(startPort + index, `PORT-${startPort + index}`, group.nodes));
   for (const region of REGION_PORTS) {
-    addPortGroup(region.port, `REGION-${region.code}`, metadata.filter((node) => node.region === region.code));
+    addPortGroup(region.port, `REGION-${region.code}-${region.port}`, regionNodes.get(region.code));
   }
   return {
     listeners,
     proxyGroups,
     genericPortCount: genericGroups.length,
-    uniqueIPv4Count: new Set(metadata.map((node) => node.ipv4).filter(Boolean)).size,
-    unresolvedHostCount: unresolvedHosts.size
+    uniqueEndpointCount: new Set(metadata.map((node) => node.endpointKey)).size
   };
 }
 __name(resolveProxyGroups, "resolveProxyGroups");
@@ -4535,35 +4538,130 @@ function distributeProxies(metadata, groupCount) {
   const groups = Array.from({ length: groupCount }, (_, index) => ({
     index,
     nodes: [],
-    identities: /* @__PURE__ */ new Set(),
+    endpointKeys: /* @__PURE__ */ new Set(),
+    sourceCounts: /* @__PURE__ */ new Map(),
     regions: /* @__PURE__ */ new Map()
   }));
-  const regionOrder = new Map(REGION_PORTS.map((region, index) => [region.code, index]));
-  const nodes = [...metadata].sort((left, right) => {
-    const leftRegion = regionOrder.get(left.region) ?? REGION_PORTS.length;
-    const rightRegion = regionOrder.get(right.region) ?? REGION_PORTS.length;
-    return leftRegion - rightRegion || compareText(left.identity, right.identity) || compareText(left.name, right.name);
-  });
-  for (const node of nodes) {
-    const regionKey = node.region || "OTHER";
-    const target = groups.reduce((best, group) => {
-      if (!best) return group;
-      const groupScore = [group.nodes.length, group.identities.has(node.identity) ? 1 : 0, group.regions.get(regionKey) || 0, group.index];
-      const bestScore = [best.nodes.length, best.identities.has(node.identity) ? 1 : 0, best.regions.get(regionKey) || 0, best.index];
-      for (let index = 0; index < groupScore.length; index++) {
-        if (groupScore[index] !== bestScore[index]) {
-          return groupScore[index] < bestScore[index] ? group : best;
-        }
-      }
-      return best;
-    }, null);
-    target.nodes.push(node);
-    target.identities.add(node.identity);
-    target.regions.set(regionKey, (target.regions.get(regionKey) || 0) + 1);
+  const buckets = new Map();
+  for (const node of [...metadata].sort(compareProxyMetadata)) {
+    let bucket = buckets.get(node.nodeHash);
+    if (!bucket) {
+      bucket = {
+        nodeHash: node.nodeHash,
+        nodes: [],
+        endpointKeys: /* @__PURE__ */ new Set(),
+        regions: /* @__PURE__ */ new Map(),
+        sourceRank: node.sourceRank,
+        firstNode: node
+      };
+      buckets.set(node.nodeHash, bucket);
+    }
+    bucket.nodes.push(node);
+    bucket.endpointKeys.add(node.endpointKey);
+    bucket.regions.set(node.region || "OTHER", (bucket.regions.get(node.region || "OTHER") || 0) + 1);
+    if (node.sourceRank < bucket.sourceRank || compareProxyMetadata(node, bucket.firstNode) < 0) {
+      bucket.sourceRank = node.sourceRank;
+      bucket.firstNode = node;
+    }
   }
+  const bucketsBySource = new Map();
+  for (const bucket of buckets.values()) {
+    const sourceBuckets = bucketsBySource.get(bucket.sourceRank) || [];
+    sourceBuckets.push(bucket);
+    bucketsBySource.set(bucket.sourceRank, sourceBuckets);
+  }
+  for (const sourceBuckets of bucketsBySource.values()) {
+    sourceBuckets.sort(compareHashBuckets);
+  }
+  const sourceOrder = [...bucketsBySource.keys()].sort((left, right) => left - right);
+  const addBucket = (target, bucket) => {
+    for (const node of bucket.nodes) {
+      target.nodes.push(node);
+      target.endpointKeys.add(node.endpointKey);
+      target.sourceCounts.set(node.sourceRank, (target.sourceCounts.get(node.sourceRank) || 0) + 1);
+      const regionKey = node.region || "OTHER";
+      target.regions.set(regionKey, (target.regions.get(regionKey) || 0) + 1);
+    }
+  };
+  const scoreGroup = (group, bucket) => {
+    let endpointOverlap = 0;
+    for (const endpointKey of bucket.endpointKeys) {
+      if (group.endpointKeys.has(endpointKey)) endpointOverlap++;
+    }
+    let regionOverlap = 0;
+    for (const [regionKey, count] of bucket.regions) {
+      if (group.regions.has(regionKey)) regionOverlap += Math.min(count, group.regions.get(regionKey));
+    }
+    return [
+      group.sourceCounts.has(bucket.sourceRank) ? 1 : 0,
+      endpointOverlap,
+      group.nodes.length,
+      regionOverlap,
+      group.index
+    ];
+  };
+  const selectBucketGroup = (bucket) => {
+    let best = groups[0];
+    let bestScore = scoreGroup(best, bucket);
+    for (let groupIndex = 1; groupIndex < groups.length; groupIndex++) {
+      const score = scoreGroup(groups[groupIndex], bucket);
+      for (let scoreIndex = 0; scoreIndex < score.length; scoreIndex++) {
+        if (score[scoreIndex] === bestScore[scoreIndex]) continue;
+        if (score[scoreIndex] < bestScore[scoreIndex]) {
+          best = groups[groupIndex];
+          bestScore = score;
+        }
+        break;
+      }
+    }
+    return best;
+  };
+  let nextEmptyGroup = 0;
+  for (const sourceRank of sourceOrder) {
+    for (const bucket of bucketsBySource.get(sourceRank)) {
+      const target = nextEmptyGroup < groups.length ? groups[nextEmptyGroup++] : selectBucketGroup(bucket);
+      addBucket(target, bucket);
+    }
+  }
+  for (const group of groups) group.nodes.sort(compareProxyMetadata);
   return groups;
 }
 __name(distributeProxies, "distributeProxies");
+function compareHashBuckets(left, right) {
+  return compareProxyMetadata(left.firstNode, right.firstNode) || right.nodes.length - left.nodes.length || compareText(left.nodeHash, right.nodeHash);
+}
+__name(compareHashBuckets, "compareHashBuckets");
+function compareProxyMetadata(left, right) {
+  return left.sourceRank - right.sourceRank || left.regionRank - right.regionRank || left.originalIndex - right.originalIndex || compareText(left.endpointKey, right.endpointKey) || compareText(left.name, right.name);
+}
+__name(compareProxyMetadata, "compareProxyMetadata");
+function createNodeHash(proxy) {
+  return JSON.stringify(canonicalizeProxyValue(proxy, true));
+}
+__name(createNodeHash, "createNodeHash");
+function canonicalizeProxyValue(value, omitName = false) {
+  if (Array.isArray(value)) return value.map((item) => canonicalizeProxyValue(item));
+  if (!value || typeof value !== "object") return value;
+  const result = {};
+  for (const key of Object.keys(value).sort(compareText)) {
+    if (omitName && key === "name") continue;
+    result[key] = canonicalizeProxyValue(value[key]);
+  }
+  return result;
+}
+__name(canonicalizeProxyValue, "canonicalizeProxyValue");
+function normalizeEndpointKey(server) {
+  return String(server ?? "").trim().toLowerCase().replace(/\.$/, "");
+}
+__name(normalizeEndpointKey, "normalizeEndpointKey");
+function createSelectGroup(name, proxies) {
+  return {
+    name,
+    type: "select",
+    proxies
+  };
+}
+__name(createSelectGroup, "createSelectGroup");
 function createUrlTestGroup(name, proxies, hidden = false) {
   return {
     name,
@@ -4579,7 +4677,7 @@ function createUrlTestGroup(name, proxies, hidden = false) {
   };
 }
 __name(createUrlTestGroup, "createUrlTestGroup");
-function createFallbackGroup(name, proxies) {
+function createFallbackGroup(name, proxies, hidden = false) {
   return {
     name,
     type: "fallback",
@@ -4588,7 +4686,8 @@ function createFallbackGroup(name, proxies) {
     "expected-status": 204,
     interval: 300,
     timeout: 5e3,
-    lazy: false
+    lazy: false,
+    hidden
   };
 }
 __name(createFallbackGroup, "createFallbackGroup");
@@ -4597,6 +4696,16 @@ function matchRegion(name) {
   return REGION_PORTS.find((region) => region.pattern.test(nodeName))?.code || null;
 }
 __name(matchRegion, "matchRegion");
+function extractSourceName(name) {
+  const nodeName = String(name || "");
+  const separatorIndex = nodeName.indexOf("-");
+  return separatorIndex > 0 ? nodeName.slice(0, separatorIndex) : null;
+}
+__name(extractSourceName, "extractSourceName");
+function getPreferredRegionRank(region) {
+  return PREFERRED_REGION_RANKS.get(region) ?? PREFERRED_REGION_RANKS.size;
+}
+__name(getPreferredRegionRank, "getPreferredRegionRank");
 function normalizePortOptions(startPort = DEFAULT_START_PORT, maxPorts = DEFAULT_MAX_PORTS) {
   const normalizedStartPort = startPort === "" || startPort == null ? DEFAULT_START_PORT : Number(startPort);
   const normalizedMaxPorts = maxPorts === "" || maxPorts == null ? DEFAULT_MAX_PORTS : Number(maxPorts);
@@ -4609,42 +4718,6 @@ function normalizePortOptions(startPort = DEFAULT_START_PORT, maxPorts = DEFAULT
   return { startPort: normalizedStartPort, maxPorts: normalizedMaxPorts };
 }
 __name(normalizePortOptions, "normalizePortOptions");
-async function resolveProxyHosts(proxies, fetchImpl) {
-  const hosts = Array.from(new Set(proxies.map((proxy) => String(proxy.server).toLowerCase()).filter((server) => !isIPv4(server))));
-  // ponytail: cap Worker subrequests; excess hosts stay grouped by hostname.
-  const results = await Promise.all(hosts.slice(0, MAX_DNS_LOOKUPS).map(async (host) => {
-    try {
-      const url = new URL(DNS_QUERY_URL);
-      url.searchParams.set("name", host);
-      url.searchParams.set("type", "A");
-      const response = await fetchImpl(url.toString(), {
-        headers: { "Accept": "application/dns-json" }
-      });
-      if (!response.ok) {
-        return [host, null];
-      }
-      const data = await response.json();
-      const addresses = (data.Answer || []).filter((answer) => answer.type === 1 && isIPv4(answer.data)).map((answer) => answer.data).sort(compareIPv4);
-      return [host, addresses[0] || null];
-    } catch (error) {
-      console.warn(`DNS resolve failed for ${host}:`, error.message);
-      return [host, null];
-    }
-  }));
-  return new Map(results);
-}
-__name(resolveProxyHosts, "resolveProxyHosts");
-function isIPv4(value) {
-  const parts = String(value).split(".");
-  return parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part) && Number(part) <= 255);
-}
-__name(isIPv4, "isIPv4");
-function compareIPv4(left, right) {
-  const leftValue = left.split(".").reduce((value, part) => value * 256 + Number(part), 0);
-  const rightValue = right.split(".").reduce((value, part) => value * 256 + Number(part), 0);
-  return leftValue - rightValue;
-}
-__name(compareIPv4, "compareIPv4");
 function compareText(left, right) {
   return left < right ? -1 : left > right ? 1 : 0;
 }

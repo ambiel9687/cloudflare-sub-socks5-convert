@@ -71,3 +71,45 @@
 ### Next Steps
 
 - None - task complete
+
+## Session 3: 实现端口手动选择与稳定故障转移
+
+**Date**: 2026-08-14
+**Task**: 实现端口手动选择与稳定故障转移
+
+### Summary
+
+端口组改为 select + hidden fallback，保留手动指定、稳定出口和自动故障转移。
+
+### Main Changes
+
+## 完成内容
+
+- 将普通端口与固定地区端口改为可见 `select` 组加隐藏 `fallback` 路由组。
+- 监听器统一指向 `-ROUTE`，用户选择节点失效后依次回退到本组其他节点和全局 `AUTO-BEST`。
+- 删除端口级本地 `BEST`，避免延迟波动导致出口 IP 频繁变化。
+- 使用确定性节点排序，并增加 `profile.store-selected: true` 保存手动选择。
+- 空地区组继续通过 `AUTO-BEST` 保持可用。
+
+## 验证
+
+- `node --check index.js`
+- `node --test index.test.mjs`（6 项通过）
+- `git diff --check`
+- Mihomo `-t` 配置校验通过
+
+### Git Commits
+
+(No commits - planning session)
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
