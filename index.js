@@ -29,7 +29,43 @@ var indexHTML = `<!doctype html>
 <meta charset="utf-8">
 <title>Clash2Socks5 \u8F6C\u6362\u5DE5\u5177</title>
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><defs><linearGradient id='bg' x1='0%25' y1='0%25' x2='100%25' y2='100%25'><stop offset='0%25' stop-color='%23667eea'/><stop offset='100%25' stop-color='%23764ba2'/></linearGradient></defs><rect width='100' height='100' fill='url(%23bg)' rx='20'/><circle cx='25' cy='35' r='8' fill='%23fff' opacity='0.9'/><circle cx='75' cy='35' r='8' fill='%23fff' opacity='0.9'/><circle cx='25' cy='65' r='8' fill='%23fff' opacity='0.9'/><circle cx='75' cy='65' r='8' fill='%23fff' opacity='0.9'/><path d='M33 35 Q50 20 67 35' stroke='%23fff' stroke-width='3' fill='none' opacity='0.8'/><path d='M33 65 Q50 50 67 65' stroke='%23fff' stroke-width='3' fill='none' opacity='0.8'/><path d='M25 43 Q50 50 75 43' stroke='%23fff' stroke-width='3' fill='none' opacity='0.8'/><text x='50' y='85' text-anchor='middle' fill='%23fff' font-family='Arial,sans-serif' font-size='12' font-weight='bold'>C2S</text></svg>" type="image/svg+xml">
+<script>
+try {
+    const savedTheme = localStorage.getItem('clash2socks5.theme');
+    document.documentElement.dataset.theme = ['light', 'dark'].includes(savedTheme) ? savedTheme : (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+} catch (error) {
+    document.documentElement.dataset.theme = 'light';
+}
+<\/script>
 <style>
+:root {
+    color-scheme: light;
+    --page-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    --panel-bg: rgba(255, 255, 255, 0.96);
+    --surface: #ffffff;
+    --surface-muted: #f8f9fa;
+    --text: #2c3e50;
+    --text-muted: #6c757d;
+    --border: #e9ecef;
+    --shadow: rgba(0, 0, 0, 0.12);
+    --subscribe-bg: #f0f8ff;
+    --subscribe-border: #b3d9ff;
+}
+
+html[data-theme="dark"] {
+    color-scheme: dark;
+    --page-bg: linear-gradient(135deg, #111827 0%, #24143d 100%);
+    --panel-bg: rgba(17, 24, 39, 0.96);
+    --surface: #111827;
+    --surface-muted: #1f2937;
+    --text: #e5e7eb;
+    --text-muted: #9ca3af;
+    --border: #374151;
+    --shadow: rgba(0, 0, 0, 0.4);
+    --subscribe-bg: #10243a;
+    --subscribe-border: #24517a;
+}
+
 * {
     margin: 0;
     padding: 0;
@@ -38,42 +74,46 @@ var indexHTML = `<!doctype html>
 
 body {
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--page-bg);
     min-height: 100vh;
-    color: #333;
+    color: var(--text);
 }
 
 .bg {
     min-height: 100vh;
     padding: 20px;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     justify-content: center;
 }
 
 .layout {
-    background: rgba(255, 255, 255, 0.95);
+    background: var(--panel-bg);
     backdrop-filter: blur(10px);
     border-radius: 20px;
-    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+    box-shadow: 0 20px 40px var(--shadow);
     padding: 40px;
-    max-width: 900px;
+    max-width: 1440px;
     width: 100%;
     margin: 0 auto;
 }
 
+.page-header {
+    position: relative;
+}
+
 h1 {
-    color: #2c3e50;
+    color: var(--text);
     text-align: center;
-    margin-bottom: 30px;
+    margin-bottom: 24px;
     font-size: 2.2em;
     font-weight: 300;
     line-height: 1.4;
 }
 
 h2 {
-    color: #34495e;
-    margin: 30px 0 20px 0;
+    color: var(--text);
+    margin: 0 0 16px;
     font-size: 1.5em;
     font-weight: 400;
     border-left: 4px solid #3498db;
@@ -81,16 +121,16 @@ h2 {
 }
 
 .content {
-    background: #f8f9fa;
+    background: var(--surface-muted);
     border-radius: 10px;
     padding: 25px;
     margin-bottom: 30px;
     line-height: 1.8;
-    border: 1px solid #e9ecef;
+    border: 1px solid var(--border);
 }
 
 .content strong {
-    color: #2c3e50;
+    color: var(--text);
     font-weight: 600;
 }
 
@@ -110,35 +150,53 @@ h2 {
     margin-bottom: 20px;
 }
 
-.form-row {
-    display: flex;
-    gap: 15px;
+.quick-config {
+    padding: 18px;
     margin-bottom: 20px;
-    flex-wrap: wrap;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: 12px;
 }
 
-.form-col {
-    flex: 1;
-    min-width: 200px;
+.quick-config-grid {
+    display: grid;
+    grid-template-columns: minmax(190px, 1.4fr) repeat(4, minmax(130px, 1fr)) auto;
+    gap: 12px;
+    align-items: end;
+}
+
+.quick-config-grid .form-group {
+    min-width: 0;
+    margin-bottom: 0;
+}
+
+.quick-config-grid .btn {
+    width: auto;
+    min-height: 47px;
+    margin: 0;
+    padding: 12px 22px;
+    border-radius: 10px;
+    white-space: nowrap;
 }
 
 label {
     display: block;
     margin-bottom: 8px;
     font-weight: 500;
-    color: #2c3e50;
+    color: var(--text);
     font-size: 0.95em;
 }
 
 textarea, input[type="number"], input[type="text"], input[type="password"], input[type="url"] {
     width: 100%;
     padding: 12px 16px;
-    border: 2px solid #e9ecef;
+    border: 2px solid var(--border);
     border-radius: 10px;
     font-size: 14px;
     font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
     transition: all 0.3s ease;
-    background: #fff;
+    background: var(--surface);
+    color: var(--text);
 }
 
 #inputYAML.drag-over {
@@ -147,9 +205,9 @@ textarea, input[type="number"], input[type="text"], input[type="password"], inpu
     box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.2);
 }
 
-#outputYAML[readonly], #subscriptionPreview[readonly] {
-    background: #f8f9fa;
-    color: #495057;
+#outputYAML[readonly] {
+    background: var(--surface-muted);
+    color: var(--text-muted);
 }
 
 textarea:focus, input:focus {
@@ -160,13 +218,17 @@ textarea:focus, input:focus {
 }
 
 textarea::placeholder, input::placeholder {
-    color: #adb5bd;
+    color: var(--text-muted);
     font-style: italic;
 }
 
 textarea {
     resize: vertical;
     min-height: 120px;
+}
+
+#inputYAML, #outputYAML {
+    min-height: 520px;
 }
 
 .btn {
@@ -196,21 +258,58 @@ textarea {
     transform: translateY(0);
 }
 
-.result-section {
-    margin-top: 30px;
-    padding: 25px;
-    background: #f8f9fa;
-    border-radius: 15px;
-    border: 1px solid #e9ecef;
+.workspace-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 28px;
+    align-items: start;
 }
 
-.result-section h3 {
-    color: #2c3e50;
+.config-panel {
+    min-width: 0;
+}
+
+.source-section {
+    margin-bottom: 20px;
+}
+
+.theme-toggle {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 9px 14px;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--surface-muted);
+    color: var(--text);
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.theme-toggle:hover {
+    border-color: #3498db;
+}
+
+.input-section, .result-section {
+    margin-top: 0;
+    padding: 25px;
+    background: var(--surface-muted);
+    border-radius: 15px;
+    border: 1px solid var(--border);
+    min-width: 0;
+}
+
+.input-section h3, .result-section h3 {
+    color: var(--text);
     margin: 0 0 20px 0;
     font-size: 1.3em;
     font-weight: 500;
-    border-left: 4px solid #27ae60;
+    border-left: 4px solid #3498db;
     padding-left: 15px;
+}
+
+.result-section h3 {
+    border-left-color: #27ae60;
 }
 
 #infoDiv {
@@ -256,25 +355,11 @@ textarea {
     box-shadow: 0 6px 20px rgba(39, 174, 96, 0.4);
 }
 
-.auth-section {
-    background: #fff3cd;
-    border: 1px solid #ffeaa7;
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 20px;
-}
-
-.auth-section h3 {
-    color: #856404;
-    margin-bottom: 15px;
-    font-size: 1.1em;
-}
-
 .tooltip {
     position: relative;
     display: inline-block;
     margin-left: 5px;
-    color: #6c757d;
+    color: var(--text-muted);
     cursor: help;
 }
 
@@ -311,9 +396,9 @@ textarea {
 
 .input-tabs {
     display: flex;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #e9ecef;
-    background: #f8f9fa;
+    margin-bottom: 0;
+    border-bottom: 2px solid var(--border);
+    background: var(--surface-muted);
     border-radius: 10px 10px 0 0;
     overflow: hidden;
 }
@@ -323,7 +408,7 @@ textarea {
     padding: 12px 20px;
     background: transparent;
     border: none;
-    color: #6c757d;
+    color: var(--text-muted);
     font-weight: 500;
     cursor: pointer;
     transition: all 0.3s ease;
@@ -352,14 +437,24 @@ textarea {
 
 .tab-content {
     display: none;
+    padding: 16px;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-top: 0;
+    border-radius: 0 0 10px 10px;
 }
 
 .tab-content.active {
     display: block;
 }
 
+.source-hint {
+    color: var(--text-muted);
+    line-height: 1.5;
+}
+
 .subscription-input-group {
-    margin-bottom: 20px;
+    margin-bottom: 0;
 }
 
 .input-with-button {
@@ -397,6 +492,74 @@ textarea {
     box-shadow: none;
 }
 
+.refresh-button {
+    background: var(--surface-muted);
+    color: var(--text);
+    border: 1px solid var(--border);
+    box-shadow: none;
+}
+
+.refresh-button:hover {
+    border-color: #e67e22;
+    box-shadow: 0 4px 15px rgba(230, 126, 34, 0.2);
+}
+
+.fetch-help {
+    margin-top: 10px;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.fetch-status {
+    display: inline-block;
+    margin-top: 10px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.fetch-status[hidden] {
+    display: none;
+}
+
+.fetch-status.fresh {
+    color: #0f7b47;
+    background: rgba(39, 174, 96, 0.14);
+}
+
+.fetch-status.cached {
+    color: #b45309;
+    background: rgba(230, 126, 34, 0.16);
+}
+
+html[data-theme="dark"] .fetch-status.fresh {
+    color: #86efac;
+}
+
+html[data-theme="dark"] .fetch-status.cached {
+    color: #fdba74;
+}
+
+.fetch-status.loading {
+    color: #2563eb;
+    background: rgba(52, 152, 219, 0.14);
+}
+
+.fetch-status.error {
+    color: #c0392b;
+    background: rgba(231, 76, 60, 0.14);
+}
+
+html[data-theme="dark"] .fetch-status.loading {
+    color: #93c5fd;
+}
+
+html[data-theme="dark"] .fetch-status.error {
+    color: #fca5a5;
+}
+
 .loading-spinner {
     display: inline-block;
     width: 16px;
@@ -414,11 +577,11 @@ textarea {
 
 /* \u8BA2\u9605URL\u533A\u57DF\u6837\u5F0F */
 .subscribe-section {
-    margin-top: 25px;
+    margin: 0 0 20px;
     padding: 20px;
-    background: #f0f8ff;
+    background: var(--subscribe-bg);
     border-radius: 12px;
-    border: 1px solid #b3d9ff;
+    border: 1px solid var(--subscribe-border);
     border-left: 4px solid #2196f3;
 }
 
@@ -443,12 +606,12 @@ textarea {
 .subscribe-url-input {
     flex: 1;
     padding: 12px 16px;
-    border: 2px solid #e1f5fe;
+    border: 2px solid var(--subscribe-border);
     border-radius: 8px;
     font-size: 13px;
     font-family: 'Monaco', 'Consolas', monospace;
-    background: #ffffff;
-    color: #424242;
+    background: var(--surface);
+    color: var(--text);
     word-break: break-all;
     line-height: 1.4;
 }
@@ -494,13 +657,55 @@ textarea {
     padding: 15px;
     font-size: 13px;
     line-height: 1.6;
-    color: #424242;
-    border: 1px solid rgba(33, 150, 243, 0.1);
+    color: var(--text);
+    border: 1px solid var(--subscribe-border);
 }
 
 .subscribe-usage-hint strong {
     color: #1976d2;
     font-weight: 600;
+}
+
+.help-section {
+    margin-top: 24px;
+    overflow: hidden;
+    background: var(--surface-muted);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+.help-section summary {
+    padding: 16px 20px;
+    color: var(--text);
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.help-section .content {
+    margin: 0;
+    border: 0;
+    border-top: 1px solid var(--border);
+    border-radius: 0;
+}
+
+@media (max-width: 1180px) {
+    .quick-config-grid {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .quick-config-grid .btn {
+        width: 100%;
+    }
+}
+
+@media (max-width: 960px) {
+    .workspace-grid {
+        grid-template-columns: 1fr;
+    }
+
+    #inputYAML, #outputYAML {
+        min-height: 320px;
+    }
 }
 
 @media (max-width: 768px) {
@@ -519,36 +724,25 @@ textarea {
     }
 }
 
-.config-name-preview {
-    margin-top: 8px;
-    padding: 8px 12px;
-    background: #f8f9fa;
-    border: 1px solid #e9ecef;
-    border-radius: 6px;
-    font-size: 13px;
-}
-
-.config-name-preview small {
-    color: #6c757d !important;
-    font-family: 'Monaco', 'Consolas', monospace;
-}
 
 @media (max-width: 768px) {
     .layout {
         padding: 20px;
         margin: 10px;
     }
+
+    .theme-toggle {
+        position: static;
+        display: block;
+        margin: -15px auto 20px;
+    }
     
     h1 {
         font-size: 1.8em;
     }
     
-    .form-row {
-        flex-direction: column;
-    }
-    
-    .form-col {
-        min-width: unset;
+    .quick-config-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
@@ -573,6 +767,10 @@ textarea {
     .fetch-button {
         margin-top: 10px;
     }
+
+    .quick-config-grid {
+        grid-template-columns: 1fr;
+    }
 }
 </style>
 </head>
@@ -580,100 +778,74 @@ textarea {
 <body>
 <div class="bg">
 <div class="layout">
-<h1>Clash2Socks5 \u8F6C\u6362\u5DE5\u5177</h1>
-<p class="content">
-<strong>\u4E3A\u4EC0\u4E48\u8981\u5C06\u8282\u70B9\u8F6C SOCKS 5 \uFF1F</strong><br>
-
-\u7531\u4E8E\u5927\u5BB6\u4F7F\u7528\u7684\u8282\u70B9\u7C7B\u578B\u975E\u5E38\u591A\uFF0C\u6BD4\u5982\uFF1AVMess,VLess,SS,SSR,Trojan,Clash,\u673A\u573A\u548C\u81EA\u5EFA\u8282\u70B9\u7B49\u3002\u6709\u4E9B\u8F6F\u4EF6\u4E0D\u652F\u6301\u4F7F\u7528\u8FD9\u4E9B\u8282\u70B9\uFF0C\u53EA\u652F\u6301 Socks5\u548Chttp\u4EE3\u7406\uFF0C\u6240\u4EE5\u9700\u8981\u5C06\u8FD9\u4E9B\u5E38\u7528\u7684\u8282\u70B9\u8F6C\u6210 Socks5\u4EE3\u7406\u5C31\u80FD\u4F7F\u7528\u4E86\u3002<br><br>
-
-\u8282\u70B9\u8F6CSocks5\u4F7F\u7528\u6559\u7A0B\uFF1A\u25B6 <a href="https://youtu.be/Wm4JsJdvcXs" target="_blank">https://youtu.be/Wm4JsJdvcXs</a><br>
-v2rayN\u8F6F\u4EF6\uFF1A<a href="https://github.com/2dust/v2rayN/releases/latest" target="_blank" rel="nofollow">\u70B9\u51FB\u4E0B\u8F7D>></a> \uFF0C <a href="https://github.com/2dust/v2rayN/releases/download/6.43/zz_v2rayN-With-Core-SelfContained.7z" target="_blank">\u65E7\u7248\u4E0B\u8F7D>></a><br>
-
-\u672C\u5730\u8BA2\u9605\u8F6C\u6362\u5DE5\u5177\uFF1A<a href="dingyue.html" target="_blank">\u70B9\u51FB\u67E5\u770B>></a>\uFF08\u652F\u6301\u5176\u5B83\u8282\u70B9\u8F6CClash\u8BA2\u9605\uFF0C\u652F\u6301\u591A\u4E2AClash\u8BA2\u9605\u5408\u5E76\u4E3A\u4E00\u4E2AClash\u8BA2\u9605\uFF09
-
-</p>
-
-<h2>Clash2Socks5 \u8F6C\u6362\u5DE5\u5177</h2>
-
-<!-- Tab \u5207\u6362\u754C\u9762 -->
-<div class="input-tabs">
-    <button class="tab-button active" data-tab="manual">\u{1F4DD} \u624B\u52A8\u8F93\u5165</button>
-    <button class="tab-button" data-tab="subscription">\u{1F517} \u8BA2\u9605\u94FE\u63A5</button>
+<div class="page-header">
+    <h1>Clash2Socks5 \u8F6C\u6362\u5DE5\u5177</h1>
+    <button type="button" id="themeToggle" class="theme-toggle" aria-label="\u5207\u6362\u6697\u9ED1\u6A21\u5F0F">\u{1F319} \u6697\u8272</button>
 </div>
+<h2>\u2699\uFE0F \u5FEB\u901F\u914D\u7F6E</h2>
+<section class="quick-config">
+    <div class="quick-config-grid">
+        <div class="form-group">
+            <label for="configName">\u914D\u7F6E\u540D\u79F0 (\u53EF\u9009) <span class="tooltip" data-tooltip="\u81EA\u5B9A\u4E49\u914D\u7F6E\u6587\u4EF6\u540D\u79F0\uFF0C\u7559\u7A7A\u4F7F\u7528\u9ED8\u8BA4\u540D\u79F0"></span></label>
+            <input type="text" id="configName" placeholder="clash2socks5" maxlength="30">
+        </div>
+        <div class="form-group">
+            <label for="startPort">\u8D77\u59CB\u7AEF\u53E3 <span class="tooltip" data-tooltip="\u666E\u901A\u8282\u70B9\u7EC4\u4ECE\u6B64\u7AEF\u53E3\u5F00\u59CB\uFF0C\u56FA\u5B9A\u5730\u533A\u7AEF\u53E3\u4F7F\u752820001-20010"></span></label>
+            <input type="number" id="startPort" min="1" max="65535" step="1" value="30001" placeholder="30001">
+        </div>
+        <div class="form-group">
+            <label for="maxPorts">\u6700\u591A\u7AEF\u53E3 <span class="tooltip" data-tooltip="\u8282\u70B9\u5C06\u5E73\u5747\u5206\u914D\u5230\u8FD9\u4E9B\u7AEF\u53E3\u7EC4\uFF0C\u8303\u56F41-100"></span></label>
+            <input type="number" id="maxPorts" min="1" max="100" step="1" value="20" placeholder="20">
+        </div>
+        <div class="form-group">
+            <label for="socksUsername">Socks5\u7528\u6237\u540D</label>
+            <input type="text" id="socksUsername" value="" placeholder="\u53EF\u9009">
+        </div>
+        <div class="form-group">
+            <label for="socksPassword">Socks5\u5BC6\u7801</label>
+            <input type="password" id="socksPassword" value="" placeholder="\u53EF\u9009">
+        </div>
+        <button type="button" class="btn" id="processButton">\u{1F680} \u751F\u6210\u914D\u7F6E</button>
+    </div>
+</section>
 
-<!-- \u624B\u52A8\u8F93\u5165Tab -->
-<div class="tab-content active" id="manual-tab">
+<section class="source-section">
+    <div class="input-tabs" role="tablist" aria-label="\u914D\u7F6E\u6765\u6E90">
+        <button type="button" class="tab-button active" data-tab="subscription" role="tab" aria-controls="subscription-tab" aria-selected="true">\u{1F517} \u8BA2\u9605\u94FE\u63A5</button>
+        <button type="button" class="tab-button" data-tab="manual" role="tab" aria-controls="manual-tab" aria-selected="false">\u{1F4DD} \u624B\u52A8\u8F93\u5165</button>
+    </div>
+    <div class="tab-content active" id="subscription-tab" role="tabpanel">
+        <div class="subscription-input-group">
+            <label for="subscriptionUrl">\u8BA2\u9605\u94FE\u63A5 <span class="tooltip" data-tooltip="\u8F93\u5165Clash\u8BA2\u9605\u94FE\u63A5\u5730\u5740\uFF0C\u81EA\u52A8\u83B7\u53D6\u914D\u7F6E\u5185\u5BB9"></span></label>
+            <div class="input-with-button">
+                <input type="url" id="subscriptionUrl" placeholder="https://example.com/subscription" value="">
+                <button type="button" id="fetchButton" class="fetch-button">
+                    <span class="fetch-text">\u{1F4E5} \u83B7\u53D6\u914D\u7F6E</span>
+                </button>
+                <button type="button" id="forceRefreshButton" class="fetch-button refresh-button">\u21BB \u5F3A\u5236\u5237\u65B0</button>
+            </div>
+            <div id="fetchStatus" class="fetch-status" role="status" aria-live="polite" hidden></div>
+            <div class="fetch-help">
+                \u{1F4A1} 5\u5206\u949F\u5185\u4F18\u5148\u4F7F\u7528KV\u7F13\u5B58\uFF1B\u9700\u8981\u5B9E\u65F6\u62C9\u53D6\u65F6\u70B9\u51FB\u201C\u5F3A\u5236\u5237\u65B0\u201D\u3002
+            </div>
+        </div>
+    </div>
+    <div class="tab-content" id="manual-tab" role="tabpanel">
+        <p class="source-hint">\u5728\u4E0B\u65B9\u5DE6\u4FA7\u7C98\u8D34Clash YAML\uFF0C\u6216\u76F4\u63A5\u62D6\u5165\u914D\u7F6E\u6587\u4EF6\u3002</p>
+    </div>
+</section>
+
+<div class="workspace-grid">
+<section class="config-panel input-section">
+    <h3>\u{1F4C4} \u914D\u7F6E\u5185\u5BB9\u9884\u89C8</h3>
     <div class="form-group">
-        <label for="inputYAML">Clash\u914D\u7F6E\u6587\u4EF6 <span class="tooltip" data-tooltip="\u652F\u6301\u62D6\u62FD\u6587\u4EF6\u6216\u76F4\u63A5\u7C98\u8D34YAML\u5185\u5BB9"></span></label>
-        <textarea id="inputYAML" rows="12" placeholder="\u5C06Clash\u914D\u7F6E\u6587\u4EF6\u62D6\u5230\u6B64\u5904\u6216\u5728\u6B64\u5904\u7C98\u8D34YAML\u5185\u5BB9..."></textarea>
+        <label for="inputYAML">Clash\u914D\u7F6E\u5185\u5BB9 <span class="tooltip" data-tooltip="\u8BA2\u9605\u83B7\u53D6\u540E\u4F1A\u81EA\u52A8\u586B\u5165\uFF0C\u4E5F\u53EF\u624B\u52A8\u7F16\u8F91\u3001\u7C98\u8D34\u6216\u62D6\u5165YAML\u6587\u4EF6"></span></label>
+        <textarea id="inputYAML" rows="22" placeholder="\u83B7\u53D6\u8BA2\u9605\uFF0C\u6216\u5728\u6B64\u5904\u7C98\u8D34Clash YAML\u914D\u7F6E..."></textarea>
     </div>
-</div>
-
-<!-- \u8BA2\u9605\u94FE\u63A5Tab -->
-<div class="tab-content" id="subscription-tab">
-    <div class="subscription-input-group">
-        <label for="subscriptionUrl">\u8BA2\u9605\u94FE\u63A5 <span class="tooltip" data-tooltip="\u8F93\u5165Clash\u8BA2\u9605\u94FE\u63A5\u5730\u5740\uFF0C\u81EA\u52A8\u83B7\u53D6\u914D\u7F6E\u5185\u5BB9"></span></label>
-        <div class="input-with-button">
-            <input type="url" id="subscriptionUrl" placeholder="https://example.com/subscription" value="">
-            <button type="button" id="fetchButton" class="fetch-button">
-                <span class="fetch-text">\u{1F4E5} \u83B7\u53D6\u914D\u7F6E</span>
-            </button>
-        </div>
-        <div style="margin-top: 10px; font-size: 12px; color: #666; line-height: 1.4;">
-            \u{1F4A1} <strong>\u83B7\u53D6\u7B56\u7565\uFF1A</strong>\u670D\u52A1\u7AEF\u76F4\u63A5\u83B7\u53D6\uFF0C\u65E0CORS\u9650\u5236\uFF0C\u66F4\u7A33\u5B9A\u5FEB\u901F\u3002<br>
-            \u{1F527} <strong>\u652F\u6301\u683C\u5F0F\uFF1A</strong>\u81EA\u52A8\u8BC6\u522BYAML\u3001Base64\u3001URL\u7F16\u7801\u7B49\u591A\u79CD\u683C\u5F0F\u3002
-        </div>
-    </div>
-    <div class="form-group">
-        <label for="subscriptionPreview">\u8BA2\u9605\u5185\u5BB9\u9884\u89C8</label>
-        <textarea id="subscriptionPreview" rows="12" placeholder="\u83B7\u53D6\u8BA2\u9605\u5185\u5BB9\u540E\u5C06\u5728\u6B64\u5904\u663E\u793A..." readonly></textarea>
-    </div>
-</div>
-
-<div class="auth-section">
-    <h3>\u{1F510} Socks5\u8BA4\u8BC1\u914D\u7F6E</h3>
-    <div class="form-row">
-        <div class="form-col">
-            <label for="socksUsername">\u7528\u6237\u540D</label>
-            <input type="text" id="socksUsername" value="" placeholder="\u7559\u7A7A\u5219\u65E0\u9700\u8BA4\u8BC1">
-        </div>
-        <div class="form-col">
-            <label for="socksPassword">\u5BC6\u7801</label>
-            <input type="password" id="socksPassword" value="" placeholder="\u7559\u7A7A\u5219\u65E0\u9700\u8BA4\u8BC1">
-        </div>
-    </div>
-</div>
-
-<div class="form-group">
-    <label for="configName">\u914D\u7F6E\u540D\u79F0 (\u53EF\u9009) <span class="tooltip" data-tooltip="\u81EA\u5B9A\u4E49\u914D\u7F6E\u6587\u4EF6\u540D\u79F0\uFF0C\u7559\u7A7A\u4F7F\u7528\u9ED8\u8BA4\u540D\u79F0"></span></label>
-    <input type="text" id="configName" placeholder="\u7559\u7A7A\u4F7F\u7528\u9ED8\u8BA4\u540D\u79F0: clash2socks5" maxlength="30">
-    <div class="config-name-preview">
-        <small id="namePreview" style="color: #666; font-style: italic;">\u9884\u89C8: clash2socks5-250912</small>
-    </div>
-</div>
-
-<div class="form-row">
-    <div class="form-col">
-        <label for="startPort">\u666E\u901A\u7AEF\u53E3\u8D77\u59CB\u503C <span class="tooltip" data-tooltip="\u666E\u901A\u8282\u70B9\u7EC4\u4ECE\u6B64\u7AEF\u53E3\u5F00\u59CB\uFF0C\u56FA\u5B9A\u5730\u533A\u7AEF\u53E3\u4F7F\u752820001-20010"></span></label>
-        <input type="number" id="startPort" min="1" max="65535" step="1" value="30001" placeholder="30001">
-    </div>
-    <div class="form-col">
-        <label for="maxPorts">\u6700\u591A\u666E\u901A\u7AEF\u53E3\u6570 <span class="tooltip" data-tooltip="\u8282\u70B9\u5C06\u5E73\u5747\u5206\u914D\u5230\u8FD9\u4E9B\u7AEF\u53E3\u7EC4\uFF0C\u8303\u56F41-100"></span></label>
-        <input type="number" id="maxPorts" min="1" max="100" step="1" value="20" placeholder="20">
-    </div>
-</div>
-
-<button class="btn" id="processButton">\u{1F680} \u751F\u6210Socks5\u914D\u7F6E\u6587\u4EF6</button>
-<div class="result-section">
-    <h3>\u{1F4CA} \u8F6C\u6362\u7ED3\u679C</h3>
+</section>
+<section class="result-section">
+    <h3>\u{1F4CA} \u751F\u6210\u7684\u914D\u7F6E</h3>
     <div id="infoDiv"></div>
-    <div class="form-group">
-        <label for="outputYAML">\u751F\u6210\u7684\u914D\u7F6E\u6587\u4EF6\u5185\u5BB9</label>
-        <textarea id="outputYAML" rows="12" placeholder="\u8F6C\u6362\u6210\u529F\u540E\uFF0C\u8FD9\u91CC\u5C06\u663E\u793A\u751F\u6210\u7684YAML\u914D\u7F6E\u5185\u5BB9..." readonly></textarea>
-    </div>
-    <div id="outputDiv"></div>
-    
-    <!-- \u8BA2\u9605URL\u533A\u57DF -->
     <div id="subscribeSection" class="subscribe-section" style="display: none;">
         <h4>\u{1F517} \u4E00\u952E\u8BA2\u9605\u5730\u5740</h4>
         <div class="subscribe-url-container">
@@ -684,12 +856,28 @@ v2rayN\u8F6F\u4EF6\uFF1A<a href="https://github.com/2dust/v2rayN/releases/latest
             <div class="subscribe-usage-hint">
                 \u{1F4A1} <strong>\u4F7F\u7528\u65B9\u6CD5\uFF1A</strong><br>
                 \u2022 <strong>\u5BA2\u6237\u7AEF\u8F6F\u4EF6\uFF1A</strong>\u5C06\u6B64URL\u914D\u7F6E\u4E3A\u8BA2\u9605\u5730\u5740\uFF0C\u5B9E\u73B0\u81EA\u52A8\u66F4\u65B0<br>
-                \u2022 <strong>\u6D4F\u89C8\u5668\u8BBF\u95EE\uFF1A</strong>\u76F4\u63A5\u8BBF\u95EE\u6B64URL\u53EF\u4E0B\u8F7D\u6700\u65B0\u914D\u7F6E\u6587\u4EF6<br>
-                \u2022 <strong>\u811A\u672C\u8C03\u7528\uFF1A</strong>\u53EF\u7528\u4E8E\u81EA\u52A8\u5316\u83B7\u53D6\u914D\u7F6E\u6587\u4EF6
+                \u2022 <strong>\u6D4F\u89C8\u5668\u8BBF\u95EE\uFF1A</strong>\u76F4\u63A5\u8BBF\u95EE\u6B64URL\u53EF\u4E0B\u8F7D\u6700\u65B0\u914D\u7F6E\u6587\u4EF6
             </div>
         </div>
     </div>
+    <div class="form-group">
+        <label for="outputYAML">Socks5 YAML\u914D\u7F6E\u5185\u5BB9</label>
+        <textarea id="outputYAML" rows="22" placeholder="\u70B9\u51FB\u4E0A\u65B9\u201C\u751F\u6210\u914D\u7F6E\u201D\u540E\u5C06\u5728\u6B64\u663E\u793A..." readonly></textarea>
+    </div>
+    <div id="outputDiv"></div>
+</section>
 </div>
+
+<details class="help-section">
+    <summary>\u{1F4D6} \u4F7F\u7528\u8BF4\u660E</summary>
+    <div class="content">
+        <strong>\u4E3A\u4EC0\u4E48\u8981\u5C06\u8282\u70B9\u8F6C SOCKS 5 \uFF1F</strong><br>
+        \u90E8\u5206\u8F6F\u4EF6\u53EA\u652F\u6301Socks5\u6216HTTP\u4EE3\u7406\uFF0C\u53EF\u4F7F\u7528\u672C\u5DE5\u5177\u5C06Clash\u8282\u70B9\u8F6C\u4E3ASocks5\u7AEF\u53E3\u3002<br><br>
+        \u8282\u70B9\u8F6CSocks5\u4F7F\u7528\u6559\u7A0B\uFF1A\u25B6 <a href="https://youtu.be/Wm4JsJdvcXs" target="_blank">https://youtu.be/Wm4JsJdvcXs</a><br>
+        v2rayN\u8F6F\u4EF6\uFF1A<a href="https://github.com/2dust/v2rayN/releases/latest" target="_blank" rel="nofollow">\u70B9\u51FB\u4E0B\u8F7D>></a><br>
+        \u672C\u5730\u8BA2\u9605\u8F6C\u6362\u5DE5\u5177\uFF1A<a href="dingyue.html" target="_blank">\u70B9\u51FB\u67E5\u770B>></a>
+    </div>
+</details>
 </div>
 </div>
 
@@ -750,6 +938,8 @@ class ConfigNamingService {
 // Modern JavaScript implementation without jQuery dependency
 class ClashConverter {
     constructor() {
+        this.restoreSubscriptionUrl();
+        this.initializeTheme();
         this.initializeEventListeners();
         this.nodeFilter = this.createNodeFilter();
         
@@ -772,20 +962,17 @@ class ClashConverter {
 
         // Fetch subscription
         document.getElementById('fetchButton').addEventListener('click', () => this.fetchSubscription());
+        document.getElementById('forceRefreshButton').addEventListener('click', () => this.fetchSubscription(true));
         document.getElementById('subscriptionUrl').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') this.fetchSubscription();
+        });
+        document.getElementById('subscriptionUrl').addEventListener('input', (e) => {
+            this.persistSubscriptionUrl(e.target.value);
+            this.clearFetchStatus();
         });
 
         // Process button
         document.getElementById('processButton').addEventListener('click', () => this.processConfig());
-
-        // Config name input with real-time preview
-        const configNameInput = document.getElementById('configName');
-        configNameInput.addEventListener('input', (e) => this.updateNamePreview(e.target.value));
-        configNameInput.addEventListener('blur', (e) => this.updateNamePreview(e.target.value));
-        
-        // Initialize default preview
-        this.updateNamePreview('');
 
         // File drag and drop
         const inputYAML = document.getElementById('inputYAML');
@@ -794,12 +981,77 @@ class ClashConverter {
         inputYAML.addEventListener('dragleave', (e) => this.handleDragLeave(e));
     }
 
+    restoreSubscriptionUrl() {
+        try {
+            document.getElementById('subscriptionUrl').value = localStorage.getItem('clash2socks5.subscriptionUrl') || '';
+        } catch (error) {
+            console.warn('\u65E0\u6CD5\u8BFB\u53D6\u672C\u5730\u8BA2\u9605\u94FE\u63A5');
+        }
+    }
+
+    persistSubscriptionUrl(value) {
+        try {
+            const url = value.trim();
+            if (url) localStorage.setItem('clash2socks5.subscriptionUrl', url);
+            else localStorage.removeItem('clash2socks5.subscriptionUrl');
+        } catch (error) {
+            console.warn('\u65E0\u6CD5\u4FDD\u5B58\u672C\u5730\u8BA2\u9605\u94FE\u63A5');
+        }
+    }
+
+    initializeTheme() {
+        const button = document.getElementById('themeToggle');
+        const updateButton = () => {
+            const dark = document.documentElement.dataset.theme === 'dark';
+            button.textContent = dark ? '\u2600\uFE0F \u4EAE\u8272' : '\u{1F319} \u6697\u8272';
+            button.setAttribute('aria-label', dark ? '\u5207\u6362\u5230\u4EAE\u8272\u6A21\u5F0F' : '\u5207\u6362\u5230\u6697\u9ED1\u6A21\u5F0F');
+        };
+        button.addEventListener('click', () => {
+            const theme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+            document.documentElement.dataset.theme = theme;
+            try {
+                localStorage.setItem('clash2socks5.theme', theme);
+            } catch (error) {
+                console.warn('\u65E0\u6CD5\u4FDD\u5B58\u4E3B\u9898\u8BBE\u7F6E');
+            }
+            updateButton();
+        });
+        updateButton();
+    }
+
+    clearFetchStatus() {
+        const status = document.getElementById('fetchStatus');
+        status.hidden = true;
+        status.className = 'fetch-status';
+        status.textContent = '';
+    }
+
+    showFetchStatus(type, message) {
+        const status = document.getElementById('fetchStatus');
+        status.className = 'fetch-status ' + type;
+        status.textContent = message;
+        status.hidden = false;
+    }
+
+    updateFetchStatus(cached, generatedAt, format, size) {
+        const date = new Date(generatedAt);
+        const time = Number.isNaN(date.getTime()) ? '' : ' \u00B7 ' + date.toLocaleString('zh-CN', { hour12: false });
+        this.showFetchStatus(
+            cached ? 'cached' : 'fresh',
+            '\u2705 \u83B7\u53D6\u6210\u529F \u00B7 ' + (format || 'YAML') + ' \u00B7 ' + size + ' \u5B57\u7B26 \u00B7 ' + (cached ? '\u7F13\u5B58\u547D\u4E2D' : '\u5B9E\u65F6\u83B7\u53D6') + time
+        );
+    }
+
     switchTab(e) {
-        const tabType = e.target.dataset.tab;
+        const activeButton = e.currentTarget;
+        const tabType = activeButton.dataset.tab;
         
         // Update buttons
-        document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
-        e.target.classList.add('active');
+        document.querySelectorAll('.tab-button').forEach(btn => {
+            const active = btn === activeButton;
+            btn.classList.toggle('active', active);
+            btn.setAttribute('aria-selected', active.toString());
+        });
         
         // Update content
         document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
@@ -818,48 +1070,22 @@ class ClashConverter {
         this.clearSubscribeUrl();
     }
 
-    /**
-     * \u66F4\u65B0\u914D\u7F6E\u540D\u79F0\u9884\u89C8
-     * @param {string} customName - \u7528\u6237\u8F93\u5165\u7684\u81EA\u5B9A\u4E49\u540D\u79F0
-     */
-    updateNamePreview(customName) {
-        const previewElement = document.getElementById('namePreview');
-        if (previewElement && this.namingService) {
-            try {
-                const previewName = this.namingService.generatePreview(customName);
-                previewElement.textContent = '\u9884\u89C8: ' + previewName;
-                
-                // \u5982\u679C\u7528\u6237\u8F93\u5165\u4E86\u81EA\u5B9A\u4E49\u540D\u79F0\uFF0C\u9AD8\u4EAE\u663E\u793A
-                if (customName && customName.trim()) {
-                    previewElement.style.color = '#2c3e50';
-                    previewElement.style.fontWeight = '500';
-                } else {
-                    previewElement.style.color = '#6c757d';
-                    previewElement.style.fontWeight = 'normal';
-                }
-            } catch (error) {
-                console.error('\u9884\u89C8\u751F\u6210\u5931\u8D25:', error);
-                previewElement.textContent = '\u9884\u89C8: clash2socks5-250912';
-            }
-        }
-    }
-
-    async fetchSubscription() {
+    async fetchSubscription(forceRefresh = false) {
         const url = document.getElementById('subscriptionUrl').value.trim();
         const button = document.getElementById('fetchButton');
+        const forceButton = document.getElementById('forceRefreshButton');
         const buttonText = button.querySelector('.fetch-text');
-        const infoDiv = document.getElementById('infoDiv');
 
         if (!url) {
-            this.showError('\u26A0\uFE0F \u8BF7\u8F93\u5165\u8BA2\u9605\u94FE\u63A5\u5730\u5740\uFF01');
+            this.showFetchStatus('error', '\u26A0\uFE0F \u8BF7\u8F93\u5165\u8BA2\u9605\u94FE\u63A5\u5730\u5740\uFF01');
             return;
         }
 
         // Show loading state
         button.disabled = true;
+        forceButton.disabled = true;
         buttonText.innerHTML = '<span class="loading-spinner"></span>\u83B7\u53D6\u4E2D...';
-        this.showInfo('\u{1F680} \u6B63\u5728\u83B7\u53D6\u8BA2\u9605\u5185\u5BB9...');
-        document.getElementById('subscriptionPreview').value = '';
+        this.showFetchStatus('loading', forceRefresh ? '\u{1F504} \u6B63\u5728\u5F3A\u5236\u5237\u65B0\u8BA2\u9605...' : '\u{1F680} \u6B63\u5728\u83B7\u53D6\u8BA2\u9605\u5185\u5BB9...');
 
         try {
             const response = await fetch('/api/fetch', {
@@ -867,7 +1093,7 @@ class ClashConverter {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ url })
+                body: JSON.stringify({ url, cache: !forceRefresh })
             });
 
             const data = await response.json();
@@ -877,16 +1103,16 @@ class ClashConverter {
             }
 
             // Display content
-            document.getElementById('subscriptionPreview').value = data.content;
             document.getElementById('inputYAML').value = data.content;
-
-            this.showSuccess('\u2705 \u6210\u529F\u83B7\u53D6\u8BA2\u9605\u5185\u5BB9\uFF01\u683C\u5F0F\uFF1A' + (data.format || 'YAML') + '\uFF0C\u5927\u5C0F\uFF1A' + data.content.length + ' \u5B57\u7B26<br>\u26A1 \u670D\u52A1\u7AEF\u83B7\u53D6\uFF0C\u65E0CORS\u9650\u5236');
+            this.persistSubscriptionUrl(url);
+            this.updateFetchStatus(data.cached, data.generatedAt, data.format, data.content.length);
 
         } catch (error) {
             console.error('\u8BA2\u9605\u83B7\u53D6\u5931\u8D25:', error);
-            this.showError('\u274C \u83B7\u53D6\u8BA2\u9605\u5931\u8D25\uFF1A' + error.message);
+            this.showFetchStatus('error', '\u274C \u83B7\u53D6\u8BA2\u9605\u5931\u8D25\uFF1A' + error.message);
         } finally {
             button.disabled = false;
+            forceButton.disabled = false;
             buttonText.innerHTML = '\u{1F4E5} \u83B7\u53D6\u914D\u7F6E';
         }
     }
@@ -4381,6 +4607,9 @@ var HEALTH_CHECK_URL = "https://cp.cloudflare.com/generate_204";
 var DEFAULT_START_PORT = 30001;
 var DEFAULT_MAX_PORTS = 20;
 var MAX_PORT_GROUPS = 100;
+var RESULT_CACHE_TTL_SECONDS = 300;
+var ASSIGNMENT_TTL_SECONDS = 90 * 24 * 60 * 60;
+var ASSIGNMENT_RETENTION_MS = ASSIGNMENT_TTL_SECONDS * 1e3;
 var PREFERRED_REGION_RANKS = new Map(["HK", "US", "TW", "SG", "KR", "JP"].map((code, index) => [code, index]));
 var REGION_PORTS = [
   { code: "HK", port: 20001, pattern: /🇭🇰|香港|hong[\s_-]*kong|(?:^|[^a-z])hk(?:$|[^a-z])/i },
@@ -4394,7 +4623,7 @@ var REGION_PORTS = [
   { code: "MO", port: 20009, pattern: /🇲🇴|澳门|澳門|macao|macau|(?:^|[^a-z])mo(?:$|[^a-z])/i },
   { code: "ID", port: 20010, pattern: /🇮🇩|印度尼西亚|印度尼西亞|印尼|indonesia|(?:^|[^a-z])id(?:$|[^a-z])/i }
 ];
-async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts = DEFAULT_MAX_PORTS, auth, env) {
+async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts = DEFAULT_MAX_PORTS, auth, env, assignmentState) {
   try {
     ({ startPort, maxPorts } = normalizePortOptions(startPort, maxPorts));
     const yamlData = js_yaml_default.load(content);
@@ -4417,7 +4646,7 @@ async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts =
     if (startPort <= REGION_PORTS.at(-1).port && genericEndPort >= REGION_PORTS[0].port) {
       throw new Error(`\u666E\u901A\u7AEF\u53E3\u8303\u56F4 ${startPort}-${genericEndPort} \u4E0E\u56FA\u5B9A\u5730\u533A\u7AEF\u53E3 20001-20010 \u51B2\u7A81`);
     }
-    const failover = await resolveProxyGroups(validProxies, startPort, maxPorts);
+    const failover = await resolveProxyGroups(validProxies, startPort, maxPorts, assignmentState);
     if (auth && auth.username && auth.password) {
       for (const listener of failover.listeners) {
         listener.users = [{
@@ -4464,7 +4693,8 @@ async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts =
       portRange: {
         start: startPort,
         end: genericEndPort
-      }
+      },
+      assignmentState: failover.assignmentState
     };
   } catch (error) {
     console.error("Config conversion error:", error);
@@ -4475,7 +4705,7 @@ async function convertConfig(content, startPort = DEFAULT_START_PORT, maxPorts =
   }
 }
 __name(convertConfig, "convertConfig");
-async function resolveProxyGroups(proxies, startPort, maxPorts) {
+async function resolveProxyGroups(proxies, startPort, maxPorts, assignmentState) {
   const sourceRanks = new Map();
   const metadata = proxies.map((proxy, originalIndex) => {
     const sourceName = extractSourceName(proxy.name);
@@ -4506,7 +4736,8 @@ async function resolveProxyGroups(proxies, startPort, maxPorts) {
   const proxyNames = sortedMetadata.map((node) => node.name);
   const usedNames = new Set(proxyNames);
   const autoBestName = createUniqueName("AUTO-BEST", usedNames);
-  const genericGroups = distributeProxies(metadata, Math.min(maxPorts, metadata.length));
+  const distribution = await distributeProxies(metadata, Math.min(maxPorts, metadata.length), assignmentState);
+  const genericGroups = distribution.groups;
   const proxyGroups = [createUrlTestGroup(autoBestName, proxyNames)];
   const listeners = [];
   const addPortGroup = (port, baseName, nodes) => {
@@ -4530,17 +4761,19 @@ async function resolveProxyGroups(proxies, startPort, maxPorts) {
     listeners,
     proxyGroups,
     genericPortCount: genericGroups.length,
-    uniqueEndpointCount: new Set(metadata.map((node) => node.endpointKey)).size
+    uniqueEndpointCount: new Set(metadata.map((node) => node.endpointKey)).size,
+    assignmentState: distribution.assignmentState
   };
 }
 __name(resolveProxyGroups, "resolveProxyGroups");
-function distributeProxies(metadata, groupCount) {
+async function distributeProxies(metadata, groupCount, assignmentState) {
   const groups = Array.from({ length: groupCount }, (_, index) => ({
     index,
     nodes: [],
     endpointKeys: /* @__PURE__ */ new Set(),
     sourceCounts: /* @__PURE__ */ new Map(),
-    regions: /* @__PURE__ */ new Map()
+    regions: /* @__PURE__ */ new Map(),
+    buckets: []
   }));
   const buckets = new Map();
   for (const node of [...metadata].sort(compareProxyMetadata)) {
@@ -4575,6 +4808,7 @@ function distributeProxies(metadata, groupCount) {
   }
   const sourceOrder = [...bucketsBySource.keys()].sort((left, right) => left - right);
   const addBucket = (target, bucket) => {
+    target.buckets.push(bucket);
     for (const node of bucket.nodes) {
       target.nodes.push(node);
       target.endpointKeys.add(node.endpointKey);
@@ -4616,15 +4850,59 @@ function distributeProxies(metadata, groupCount) {
     }
     return best;
   };
-  let nextEmptyGroup = 0;
-  for (const sourceRank of sourceOrder) {
-    for (const bucket of bucketsBySource.get(sourceRank)) {
-      const target = nextEmptyGroup < groups.length ? groups[nextEmptyGroup++] : selectBucketGroup(bucket);
-      addBucket(target, bucket);
+  if (assignmentState === void 0) {
+    let nextEmptyGroup = 0;
+    for (const sourceRank of sourceOrder) {
+      for (const bucket of bucketsBySource.get(sourceRank)) {
+        const target = nextEmptyGroup < groups.length ? groups[nextEmptyGroup++] : selectBucketGroup(bucket);
+        addBucket(target, bucket);
+      }
+    }
+    for (const group of groups) group.nodes.sort(compareProxyMetadata);
+    return { groups, assignmentState: void 0 };
+  }
+  const previousUpdatedAt = Number(assignmentState.updatedAt) || 0;
+  const now = Math.max(Date.now(), previousUpdatedAt + 1);
+  const retainedAssignments = {};
+  for (const [nodeHash, assignment] of Object.entries(assignmentState.assignments || {})) {
+    if (now - assignment.lastSeenAt <= ASSIGNMENT_RETENTION_MS) retainedAssignments[nodeHash] = assignment;
+  }
+  await Promise.all([...buckets.values()].map(async (bucket) => {
+    bucket.persistentHash = await sha256Text(bucket.nodeHash);
+    bucket.assignment = retainedAssignments[bucket.persistentHash];
+  }));
+  const stableBuckets = [];
+  const returningBuckets = [];
+  const newBuckets = [];
+  for (const bucket of buckets.values()) {
+    const assignment = bucket.assignment;
+    if (!assignment || assignment.group < 0 || assignment.group >= groups.length) {
+      newBuckets.push(bucket);
+    } else if (assignment.lastSeenAt === previousUpdatedAt) {
+      stableBuckets.push(bucket);
+    } else {
+      returningBuckets.push(bucket);
     }
   }
-  for (const group of groups) group.nodes.sort(compareProxyMetadata);
-  return groups;
+  stableBuckets.sort((left, right) => left.assignment.group - right.assignment.group || left.assignment.order - right.assignment.order || compareHashBuckets(left, right));
+  for (const bucket of stableBuckets) addBucket(groups[bucket.assignment.group], bucket);
+  returningBuckets.sort((left, right) => left.assignment.group - right.assignment.group || left.assignment.order - right.assignment.order || compareHashBuckets(left, right));
+  for (const bucket of returningBuckets) addBucket(groups[bucket.assignment.group], bucket);
+  newBuckets.sort((left, right) => left.sourceRank - right.sourceRank || compareHashBuckets(left, right));
+  for (const bucket of newBuckets) {
+    const target = groups.find((group) => group.nodes.length === 0) || selectBucketGroup(bucket);
+    addBucket(target, bucket);
+  }
+  const nextAssignments = retainedAssignments;
+  for (const group of groups) {
+    group.buckets.forEach((bucket, order) => {
+      nextAssignments[bucket.persistentHash] = { group: group.index, order, lastSeenAt: now };
+    });
+  }
+  return {
+    groups,
+    assignmentState: { version: 1, updatedAt: now, assignments: nextAssignments }
+  };
 }
 __name(distributeProxies, "distributeProxies");
 function compareHashBuckets(left, right) {
@@ -4639,6 +4917,11 @@ function createNodeHash(proxy) {
   return JSON.stringify(canonicalizeProxyValue(proxy, true));
 }
 __name(createNodeHash, "createNodeHash");
+async function sha256Text(value) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+__name(sha256Text, "sha256Text");
 function canonicalizeProxyValue(value, omitName = false) {
   if (Array.isArray(value)) return value.map((item) => canonicalizeProxyValue(item));
   if (!value || typeof value !== "object") return value;
@@ -4918,6 +5201,97 @@ var RequestHandler = class {
   }
 };
 __name(RequestHandler, "RequestHandler");
+function getPortAssignmentKV(env) {
+  const kv = env?.PORT_ASSIGNMENT_KV;
+  return kv && typeof kv.get === "function" && typeof kv.put === "function" ? kv : null;
+}
+__name(getPortAssignmentKV, "getPortAssignmentKV");
+function isValidAssignmentState(value) {
+  return value?.version === 1 && Number.isFinite(value.updatedAt) && value.updatedAt >= 0 && value.assignments && typeof value.assignments === "object" && Object.entries(value.assignments).every(([nodeHash, assignment]) => /^[a-f0-9]{64}$/.test(nodeHash) && Number.isInteger(assignment.group) && assignment.group >= 0 && Number.isInteger(assignment.order) && assignment.order >= 0 && Number.isFinite(assignment.lastSeenAt) && assignment.lastSeenAt >= 0 && assignment.lastSeenAt <= value.updatedAt);
+}
+__name(isValidAssignmentState, "isValidAssignmentState");
+async function readAssignmentState(kv, key) {
+  try {
+    const value = await kv.get(key, "json");
+    if (value === null) return { version: 1, updatedAt: 0, assignments: {} };
+    if (!isValidAssignmentState(value)) throw new Error("invalid assignment state");
+    return value;
+  } catch (error) {
+    console.warn("KV assignment memory unavailable; using stateless assignment");
+    return void 0;
+  }
+}
+__name(readAssignmentState, "readAssignmentState");
+async function readResultCache(kv, key) {
+  try {
+    const value = await kv.get(key, "json");
+    const generatedAt = Date.parse(value?.generatedAt);
+    const age = Date.now() - generatedAt;
+    if (value?.version !== 1 || typeof value.config !== "string" || typeof value.sourceFormat !== "string" || !Number.isFinite(value.validNodes) || !Number.isFinite(value.listenerCount) || !value.subscriptionHeaders || typeof value.subscriptionHeaders !== "object" || !Number.isFinite(generatedAt) || age < 0 || age >= RESULT_CACHE_TTL_SECONDS * 1e3) return null;
+    return value;
+  } catch (error) {
+    console.warn("KV subscription cache unavailable; fetching fresh data");
+    return null;
+  }
+}
+__name(readResultCache, "readResultCache");
+async function readSourceCache(kv, key) {
+  try {
+    const value = await kv.get(key, "json");
+    const generatedAt = Date.parse(value?.generatedAt);
+    const age = Date.now() - generatedAt;
+    if (value?.version !== 1 || typeof value.content !== "string" || typeof value.format !== "string" || !value.subscriptionHeaders || typeof value.subscriptionHeaders !== "object" || !Number.isFinite(generatedAt) || age < 0 || age >= RESULT_CACHE_TTL_SECONDS * 1e3) return null;
+    return value;
+  } catch (error) {
+    console.warn("KV source cache unavailable; fetching fresh data");
+    return null;
+  }
+}
+__name(readSourceCache, "readSourceCache");
+function createFetchSubscriptionResponse(result, cached) {
+  return new Response(JSON.stringify({
+    content: result.content,
+    format: result.format,
+    subscriptionHeaders: result.subscriptionHeaders,
+    cached,
+    generatedAt: result.generatedAt,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString()
+  }), {
+    headers: { "Content-Type": "application/json" }
+  });
+}
+__name(createFetchSubscriptionResponse, "createFetchSubscriptionResponse");
+async function persistKVEntries(kv, entries, ctx) {
+  const task = Promise.allSettled(entries.map(({ key, value, expirationTtl }) => Promise.resolve().then(() => kv.put(key, JSON.stringify(value), { expirationTtl })))).then((results) => {
+    if (results.some((result) => result.status === "rejected")) console.warn("KV persistence failed; current response is still valid");
+  });
+  if (typeof ctx?.waitUntil === "function") ctx.waitUntil(task);
+  else await task;
+}
+__name(persistKVEntries, "persistKVEntries");
+function createSubscribeResponse(result, customFilename) {
+  const responseHeaders = {
+    "Content-Type": "application/x-yaml",
+    "Content-Disposition": generateContentDisposition(generateCustomFilename(customFilename) + ".yaml"),
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "X-Generated-At": result.generatedAt,
+    "X-Source-Format": result.sourceFormat || "unknown",
+    "X-Node-Count": String(result.validNodes),
+    "X-Port-Count": String(result.listenerCount)
+  };
+  const passthrough = [
+    "subscription-userinfo",
+    "profile-update-interval",
+    "profile-web-page-url",
+    "profile-title"
+  ];
+  for (const key of passthrough) {
+    if (result.subscriptionHeaders?.[key]) responseHeaders[key] = result.subscriptionHeaders[key];
+  }
+  if (!responseHeaders["profile-update-interval"]) responseHeaders["profile-update-interval"] = "24";
+  return new Response(result.config, { headers: responseHeaders });
+}
+__name(createSubscribeResponse, "createSubscribeResponse");
 
 // src/handlers/api.js
 async function handleAPI(request, env, ctx) {
@@ -4940,7 +5314,7 @@ async function handleAPI(request, env, ctx) {
         if (request.method !== "POST") {
           throw new Error("Method not allowed");
         }
-        response = await handleFetchSubscription(request, env);
+        response = await handleFetchSubscription(request, env, ctx);
         break;
       case "/api/convert":
         if (request.method !== "POST") {
@@ -4952,7 +5326,7 @@ async function handleAPI(request, env, ctx) {
         if (request.method !== "GET") {
           throw new Error("Method not allowed");
         }
-        response = await handleSubscribeDownload(request, env);
+        response = await handleSubscribeDownload(request, env, ctx);
         break;
       default:
         response = new Response(JSON.stringify({
@@ -4969,26 +5343,39 @@ async function handleAPI(request, env, ctx) {
   }
 }
 __name(handleAPI, "handleAPI");
-async function handleFetchSubscription(request, env) {
+async function handleFetchSubscription(request, env, ctx) {
   const body = await request.json();
   const { url } = body;
   if (!url) {
     throw new Error("URL is required");
   }
-  RequestHandler.validateUrl(url);
-  const result = await RequestHandler.withTimeout(
-    fetchSubscription(url, env),
+  const normalizedUrl = RequestHandler.validateUrl(url).href;
+  const kv = getPortAssignmentKV(env);
+  const cacheEnabled = body.cache !== false;
+  let cacheKey;
+  if (kv) {
+    cacheKey = `source:v1:${await sha256Text(normalizedUrl)}`;
+    if (cacheEnabled) {
+      const cachedResult = await readSourceCache(kv, cacheKey);
+      if (cachedResult) return createFetchSubscriptionResponse(cachedResult, true);
+    }
+  }
+  const subscriptionResult = await RequestHandler.withTimeout(
+    fetchSubscription(normalizedUrl, env),
     6e4
     // 60 second timeout
   );
-  return new Response(JSON.stringify({
-    ...result,
-    cached: false,
-    // Always fresh data
-    timestamp: (/* @__PURE__ */ new Date()).toISOString()
-  }), {
-    headers: { "Content-Type": "application/json" }
-  });
+  const result = {
+    version: 1,
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    content: subscriptionResult.content,
+    format: subscriptionResult.format || "unknown",
+    subscriptionHeaders: subscriptionResult.subscriptionHeaders || {}
+  };
+  if (kv) {
+    await persistKVEntries(kv, [{ key: cacheKey, value: result, expirationTtl: RESULT_CACHE_TTL_SECONDS }], ctx);
+  }
+  return createFetchSubscriptionResponse(result, false);
 }
 __name(handleFetchSubscription, "handleFetchSubscription");
 async function handleConvertConfig(request, env) {
@@ -5014,7 +5401,7 @@ async function handleConvertConfig(request, env) {
   });
 }
 __name(handleConvertConfig, "handleConvertConfig");
-async function handleSubscribeDownload(request, env) {
+async function handleSubscribeDownload(request, env, ctx) {
   const url = new URL(request.url);
   const searchParams = url.searchParams;
   const params = parseSubscribeParams(searchParams);
@@ -5061,44 +5448,48 @@ dns:
       }
     });
   }
-  RequestHandler.validateUrl(params.subscriptionUrl);
+  const normalizedSubscriptionUrl = RequestHandler.validateUrl(params.subscriptionUrl).href;
+  const kv = getPortAssignmentKV(env);
+  let assignmentKey;
+  let resultKey;
+  if (kv) {
+    [assignmentKey, resultKey] = await Promise.all([
+      sha256Text(JSON.stringify([normalizedSubscriptionUrl, params.startPort, params.maxPorts])).then((hash) => `assignment:v1:${hash}`),
+      sha256Text(JSON.stringify([normalizedSubscriptionUrl, params.startPort, params.maxPorts, params.auth?.username || "", params.auth?.password || ""])).then((hash) => `result:v1:${hash}`)
+    ]);
+    if (params.cache) {
+      const cachedResult = await readResultCache(kv, resultKey);
+      if (cachedResult) return createSubscribeResponse(cachedResult, params.filename);
+    }
+  }
   subscriptionResult = await RequestHandler.withTimeout(
-    fetchSubscription(params.subscriptionUrl, env),
+    fetchSubscription(normalizedSubscriptionUrl, env),
     6e4
     // 60 second timeout
   );
+  const assignmentState = kv ? await readAssignmentState(kv, assignmentKey) : void 0;
   const convertResult = await RequestHandler.withTimeout(
-    convertConfig(subscriptionResult.content, params.startPort, params.maxPorts, params.auth, env),
+    convertConfig(subscriptionResult.content, params.startPort, params.maxPorts, params.auth, env, assignmentState),
     2e4
     // 20 second timeout
   );
-  const filename = generateCustomFilename(params.filename);
-  const responseHeaders = {
-    "Content-Type": "application/x-yaml",
-    "Content-Disposition": generateContentDisposition(filename + ".yaml"),
-    "Cache-Control": "no-cache, no-store, must-revalidate",
-    "X-Generated-At": (/* @__PURE__ */ new Date()).toISOString(),
-    "X-Source-Format": subscriptionResult.format || "unknown",
-    "X-Node-Count": convertResult.validNodes.toString(),
-    "X-Port-Count": convertResult.listenerCount.toString()
+  const result = {
+    version: 1,
+    generatedAt: (/* @__PURE__ */ new Date()).toISOString(),
+    config: convertResult.config,
+    sourceFormat: subscriptionResult.format || "unknown",
+    validNodes: convertResult.validNodes,
+    listenerCount: convertResult.listenerCount,
+    subscriptionHeaders: subscriptionResult.subscriptionHeaders || {}
   };
-  if (subscriptionResult.subscriptionHeaders) {
-    const passthrough = [
-      "subscription-userinfo",
-      "profile-update-interval",
-      "profile-web-page-url",
-      "profile-title"
-    ];
-    for (const key of passthrough) {
-      if (subscriptionResult.subscriptionHeaders[key]) {
-        responseHeaders[key] = subscriptionResult.subscriptionHeaders[key];
-      }
+  if (kv) {
+    const entries = [{ key: resultKey, value: result, expirationTtl: RESULT_CACHE_TTL_SECONDS }];
+    if (convertResult.assignmentState) {
+      entries.push({ key: assignmentKey, value: convertResult.assignmentState, expirationTtl: ASSIGNMENT_TTL_SECONDS });
     }
+    await persistKVEntries(kv, entries, ctx);
   }
-  if (!responseHeaders["profile-update-interval"]) {
-    responseHeaders["profile-update-interval"] = "24";
-  }
-  return new Response(convertResult.config, { headers: responseHeaders });
+  return createSubscribeResponse(result, params.filename);
 }
 __name(handleSubscribeDownload, "handleSubscribeDownload");
 function parseSubscribeParams(searchParams) {
@@ -5165,7 +5556,8 @@ function parseSubscribeParams(searchParams) {
     startPort,
     maxPorts,
     auth,
-    filename
+    filename,
+    cache: searchParams.get("cache") !== "false"
   };
 }
 __name(parseSubscribeParams, "parseSubscribeParams");

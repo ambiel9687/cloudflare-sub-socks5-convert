@@ -59,6 +59,71 @@ async function convert(body, fetchImpl = dnsFetch()) {
   }
 }
 
+class FakeKV {
+  constructor({ failGet = false, failPut = false } = {}) {
+    this.store = new Map();
+    this.getCalls = [];
+    this.putCalls = [];
+    this.failGet = failGet;
+    this.failPut = failPut;
+  }
+
+  async get(key, type) {
+    this.getCalls.push(key);
+    if (this.failGet) throw new Error('KV get failed');
+    const value = this.store.get(key);
+    if (value === undefined) return null;
+    return type === 'json' ? JSON.parse(value) : value;
+  }
+
+  async put(key, value, options) {
+    this.putCalls.push({ key, value, options });
+    if (this.failPut) throw new Error('KV put failed');
+    this.store.set(key, value);
+  }
+}
+
+function createUpstream(contents, headers = {}) {
+  let calls = 0;
+  return {
+    fetch: async () => new Response(contents[Math.min(calls++, contents.length - 1)], { headers }),
+    calls: () => calls
+  };
+}
+
+async function subscribe({ kv, fetchImpl, cache, filename, auth, startPort = 31000, maxPorts = 3 }) {
+  const params = new URLSearchParams({
+    url: btoa('https://subscription.example.com/clash'),
+    port: String(startPort),
+    maxPorts: String(maxPorts)
+  });
+  if (cache === false) params.set('cache', 'false');
+  if (filename) params.set('filename', filename);
+  if (auth) params.set('auth', btoa(`${auth.username}:${auth.password}`));
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = fetchImpl;
+  try {
+    return await worker.fetch(new Request(`https://example.com/api/subscribe?${params}`), kv ? { PORT_ASSIGNMENT_KV: kv } : {}, {});
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function fetchPreview({ kv, fetchImpl, cache = true }) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = fetchImpl;
+  try {
+    const response = await worker.fetch(new Request('https://example.com/api/fetch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: 'https://subscription.example.com/clash', cache })
+    }), kv ? { PORT_ASSIGNMENT_KV: kv } : {}, {});
+    return { response, data: await response.json() };
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
 function parseConfig(config) {
   const listeners = [];
   const groups = [];
@@ -311,11 +376,30 @@ test('validates max ports, port range and fixed region overlap', async () => {
   assert.match(overlap.data.message, /固定地区端口/);
 });
 
-test('keeps UI and subscribe parameter defaults in sync', async () => {
+test('keeps compact UI and subscribe parameter defaults in sync', async () => {
   const page = await worker.fetch(new Request('https://example.com/'), {}, {});
   const html = await page.text();
   assert.match(html, /id="startPort"[^>]+value="30001"/);
   assert.match(html, /id="maxPorts"[^>]+value="20"/);
+  assert.match(html, /class="tab-button active" data-tab="subscription"/);
+  assert.match(html, /class="tab-content active" id="subscription-tab"/);
+  assert.match(html, /class="quick-config-grid"/);
+  assert.match(html, /class="config-panel input-section"/);
+  assert.match(html, /class="workspace-grid"/);
+  assert.match(html, /<details class="help-section">/);
+  assert.equal((html.match(/id="inputYAML"/g) || []).length, 1);
+  assert.doesNotMatch(html, /subscriptionPreview/);
+  assert.doesNotMatch(html, /id="namePreview"|class="config-name-preview"/);
+  assert.ok(html.indexOf('id="subscribeSection"') < html.indexOf('id="outputYAML"'));
+  assert.match(html, /this\.showFetchStatus\('loading'/);
+  assert.doesNotMatch(html, /this\.showInfo\(forceRefresh/);
+  assert.ok(html.indexOf('class="quick-config"') < html.indexOf('class="source-section"'));
+  assert.ok(html.indexOf('class="source-section"') < html.indexOf('class="workspace-grid"'));
+  assert.ok(html.indexOf('id="processButton"') < html.indexOf('class="source-section"'));
+  assert.match(html, /max-width: 1440px/);
+  assert.match(html, /id="themeToggle"/);
+  assert.match(html, /id="forceRefreshButton"/);
+  assert.match(html, /localStorage\.getItem\('clash2socks5\.subscriptionUrl'\)/);
   assert.match(html, /searchParams\.set\('maxPorts'/);
 
   const defaults = await worker.fetch(new Request('https://example.com/api/subscribe?mode=manual&hash=x'), {}, {});
@@ -323,4 +407,172 @@ test('keeps UI and subscribe parameter defaults in sync', async () => {
 
   const custom = await worker.fetch(new Request('https://example.com/api/subscribe?mode=manual&hash=x&port=31000&maxPorts=7'), {}, {});
   assert.match(await custom.text(), /端口=31000, 最多端口数=7/);
+});
+
+
+test('caches subscription previews for five minutes and supports forced refresh', async () => {
+  const kv = new FakeKV();
+  const upstream = createUpstream([
+    yamlFor([{ ...proxies[0], name: 'Preview-A' }]),
+    yamlFor([{ ...proxies[1], name: 'Preview-B' }])
+  ]);
+
+  const first = await fetchPreview({ kv, fetchImpl: upstream.fetch });
+  assert.equal(first.response.status, 200);
+  assert.equal(first.data.cached, false);
+  assert.equal(upstream.calls(), 1);
+
+  const cached = await fetchPreview({ kv, fetchImpl: upstream.fetch });
+  assert.equal(cached.data.cached, true);
+  assert.equal(cached.data.content, first.data.content);
+  assert.equal(cached.data.generatedAt, first.data.generatedAt);
+  assert.equal(upstream.calls(), 1);
+
+  const refreshed = await fetchPreview({ kv, fetchImpl: upstream.fetch, cache: false });
+  assert.equal(refreshed.data.cached, false);
+  assert.notEqual(refreshed.data.content, first.data.content);
+  assert.equal(upstream.calls(), 2);
+
+  const cachedRefresh = await fetchPreview({ kv, fetchImpl: upstream.fetch });
+  assert.equal(cachedRefresh.data.cached, true);
+  assert.equal(cachedRefresh.data.content, refreshed.data.content);
+  assert.equal(upstream.calls(), 2);
+  assert.ok(kv.putCalls.some((call) => call.key.startsWith('source:v1:') && call.options.expirationTtl === 300));
+});
+
+test('falls back to live preview fetching when KV is unavailable', async () => {
+  const kv = new FakeKV({ failGet: true, failPut: true });
+  const upstream = createUpstream([yamlFor([{ ...proxies[0], name: 'Live-A' }])]);
+  const result = await fetchPreview({ kv, fetchImpl: upstream.fetch });
+
+  assert.equal(result.response.status, 200);
+  assert.equal(result.data.cached, false);
+  assert.equal(upstream.calls(), 1);
+});
+
+test('caches generated subscriptions for five minutes and supports cache=false refresh', async () => {
+  const kv = new FakeKV();
+  const contentA = yamlFor([{ ...proxies[0], name: 'SubA-HK-A' }]);
+  const contentB = yamlFor([{ ...proxies[1], name: 'SubA-HK-B' }]);
+  const contentC = yamlFor([{ ...proxies[2], name: 'SubA-US-C' }]);
+  const upstream = createUpstream([contentA, contentB, contentC], {
+    'profile-title': 'Example',
+    'profile-update-interval': '12'
+  });
+
+  const first = await subscribe({ kv, fetchImpl: upstream.fetch, filename: 'first' });
+  const firstBody = await first.text();
+  const firstGeneratedAt = first.headers.get('x-generated-at');
+  const writesAfterFirst = kv.putCalls.length;
+  const cached = await subscribe({ kv, fetchImpl: upstream.fetch, filename: 'cached-name' });
+  const cachedBody = await cached.text();
+
+  assert.equal(upstream.calls(), 1);
+  assert.equal(cachedBody, firstBody);
+  assert.equal(cached.headers.get('x-generated-at'), firstGeneratedAt);
+  assert.match(cached.headers.get('content-disposition'), /cached-name/);
+  assert.equal(cached.headers.get('profile-update-interval'), '12');
+  assert.equal(kv.putCalls.length, writesAfterFirst);
+
+  const refreshed = await subscribe({ kv, fetchImpl: upstream.fetch, cache: false });
+  const refreshedBody = await refreshed.text();
+  assert.equal(upstream.calls(), 2);
+  assert.notEqual(refreshedBody, firstBody);
+
+  const cachedRefresh = await subscribe({ kv, fetchImpl: upstream.fetch });
+  assert.equal(await cachedRefresh.text(), refreshedBody);
+  assert.equal(upstream.calls(), 2);
+
+  const resultKey = [...kv.store.keys()].find((key) => key.startsWith('result:v1:'));
+  const stale = JSON.parse(kv.store.get(resultKey));
+  stale.generatedAt = new Date(Date.now() - 301_000).toISOString();
+  kv.store.set(resultKey, JSON.stringify(stale));
+  await subscribe({ kv, fetchImpl: upstream.fetch });
+  assert.equal(upstream.calls(), 3);
+
+  await subscribe({ kv, fetchImpl: upstream.fetch, auth: { username: 'user', password: 'pass' } });
+  assert.equal(upstream.calls(), 4);
+  assert.ok(kv.putCalls.some((call) => call.key.startsWith('result:v1:') && call.options.expirationTtl === 300));
+  assert.ok(kv.putCalls.some((call) => call.key.startsWith('assignment:v1:') && call.options.expirationTtl === 7_776_000));
+});
+
+test('keeps surviving nodes on the same ports and fills holes without changing the first node', async () => {
+  const kv = new FakeKV();
+  const a = { ...proxies[0], name: 'SubA-HK-A', server: 'sticky-a.example.com' };
+  const b = { ...proxies[1], name: 'SubA-US-B', server: 'sticky-b.example.com' };
+  const c = { ...proxies[2], name: 'SubA-TW-C', server: 'sticky-c.example.com' };
+  const d = { ...proxies[3], name: 'SubA-SG-D', server: 'sticky-d.example.com' };
+  const upstream = createUpstream([
+    yamlFor([a, b, c]),
+    yamlFor([c, a, d]),
+    yamlFor([b, d, c, a]),
+    yamlFor([a, b, c, d])
+  ]);
+  const ordinaryGroups = async () => {
+    const response = await subscribe({ kv, fetchImpl: upstream.fetch, cache: false });
+    return parseConfig(await response.text()).groups.filter((group) => /^PORT-3100[0-2]$/.test(group.name));
+  };
+  const groupByNode = (groups) => new Map(groups.flatMap((group) => group.proxies.map((name) => [name, group.name])));
+
+  const firstGroups = await ordinaryGroups();
+  const firstMap = groupByNode(firstGroups);
+  const secondGroups = await ordinaryGroups();
+  const secondMap = groupByNode(secondGroups);
+
+  assert.equal(secondMap.get(a.name), firstMap.get(a.name));
+  assert.equal(secondMap.get(c.name), firstMap.get(c.name));
+  assert.equal(secondMap.get(d.name), firstMap.get(b.name));
+
+  const thirdGroups = await ordinaryGroups();
+  const thirdMap = groupByNode(thirdGroups);
+  assert.equal(thirdMap.get(a.name), firstMap.get(a.name));
+  assert.equal(thirdMap.get(b.name), firstMap.get(b.name));
+  assert.equal(thirdMap.get(c.name), firstMap.get(c.name));
+  assert.equal(thirdMap.get(d.name), firstMap.get(b.name));
+  const sharedGroup = thirdGroups.find((group) => group.name === firstMap.get(b.name));
+  assert.ok(sharedGroup.proxies.indexOf(d.name) < sharedGroup.proxies.indexOf(b.name));
+
+  const assignmentKey = [...kv.store.keys()].find((key) => key.startsWith('assignment:v1:'));
+  const state = JSON.parse(kv.store.get(assignmentKey));
+  state.assignments['f'.repeat(64)] = { group: 0, order: 99, lastSeenAt: 0 };
+  kv.store.set(assignmentKey, JSON.stringify(state));
+  await ordinaryGroups();
+  const prunedState = JSON.parse(kv.store.get(assignmentKey));
+  assert.equal('f'.repeat(64) in prunedState.assignments, false);
+  assert.ok(Object.keys(prunedState.assignments).every((hash) => /^[a-f0-9]{64}$/.test(hash)));
+  assert.doesNotMatch(kv.store.get(assignmentKey), /sticky-|secret-/);
+});
+
+test('degrades to a fresh stateless response when KV fails', async () => {
+  const kv = new FakeKV({ failGet: true, failPut: true });
+  const upstream = createUpstream([yamlFor(proxies.slice(0, 2))]);
+  const response = await subscribe({ kv, fetchImpl: upstream.fetch, cache: false, maxPorts: 2 });
+
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /PORT-31000/);
+  assert.equal(upstream.calls(), 1);
+});
+
+test('keeps 1000-node assignments stable across forced refreshes', { timeout: 10000 }, async () => {
+  const items = Array.from({ length: 1000 }, (_, index) => ({
+    name: `Sub${Math.floor(index / 200)}-${['HK', 'US', 'TW', 'SG', 'KR', 'JP'][index % 6]}-${index}`,
+    type: 'ss',
+    server: `memory-${index % 250}.example.com`,
+    port: 443,
+    cipher: 'aes-128-gcm',
+    password: `secret-${index % 250}`
+  }));
+  const kv = new FakeKV();
+  const upstream = createUpstream([yamlFor(items), yamlFor([...items].reverse())]);
+  const readAssignments = async () => {
+    const response = await subscribe({ kv, fetchImpl: upstream.fetch, cache: false, startPort: 31000, maxPorts: 20 });
+    const groups = parseConfig(await response.text()).groups.filter((group) => /^PORT-310(?:0[0-9]|1[0-9])$/.test(group.name));
+    return new Map(groups.flatMap((group) => group.proxies.map((name) => [name, group.name])));
+  };
+
+  const first = await readAssignments();
+  const second = await readAssignments();
+  assert.equal(first.size, 1000);
+  assert.equal(second.size, 1000);
+  for (const item of items) assert.equal(second.get(item.name), first.get(item.name));
 });
