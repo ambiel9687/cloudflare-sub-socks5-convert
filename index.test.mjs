@@ -483,7 +483,7 @@ test('caches generated subscriptions for five minutes and supports cache=false r
   assert.equal(await cachedRefresh.text(), refreshedBody);
   assert.equal(upstream.calls(), 2);
 
-  const resultKey = [...kv.store.keys()].find((key) => key.startsWith('result:v1:'));
+  const resultKey = [...kv.store.keys()].find((key) => key.startsWith('result:v2:'));
   const stale = JSON.parse(kv.store.get(resultKey));
   stale.generatedAt = new Date(Date.now() - 301_000).toISOString();
   kv.store.set(resultKey, JSON.stringify(stale));
@@ -492,8 +492,57 @@ test('caches generated subscriptions for five minutes and supports cache=false r
 
   await subscribe({ kv, fetchImpl: upstream.fetch, auth: { username: 'user', password: 'pass' } });
   assert.equal(upstream.calls(), 4);
-  assert.ok(kv.putCalls.some((call) => call.key.startsWith('result:v1:') && call.options.expirationTtl === 300));
+  assert.ok(kv.putCalls.some((call) => call.key.startsWith('result:v2:') && call.options.expirationTtl === 300));
   assert.ok(kv.putCalls.some((call) => call.key.startsWith('assignment:v1:') && call.options.expirationTtl === 7_776_000));
+});
+
+test('migrates legacy order without moving ports and keeps replacement primaries stable', async () => {
+  const kv = new FakeKV();
+  const ldcatA = { ...proxies[0], name: 'LDCAT-HK-1', server: 'legacy-ldcat-a.example.com' };
+  const ldcatB = { ...proxies[1], name: 'LDCAT-US-2', server: 'legacy-ldcat-b.example.com' };
+  const redA = { ...proxies[2], name: '红杏2-HK-1', server: 'legacy-red-a.example.com' };
+  const redB = { ...proxies[3], name: '红杏2-US-2', server: 'legacy-red-b.example.com' };
+  const allNodes = [ldcatA, ldcatB, redA, redB];
+  const upstream = createUpstream([
+    yamlFor(allNodes),
+    yamlFor(allNodes),
+    yamlFor([redA, redB]),
+    yamlFor(allNodes)
+  ]);
+  const readGroups = async () => {
+    const response = await subscribe({ kv, fetchImpl: upstream.fetch, cache: false, maxPorts: 2 });
+    return parseConfig(await response.text()).groups.filter((group) => /^PORT-3100[01]$/.test(group.name));
+  };
+  const groupByNode = (groups) => new Map(groups.flatMap((group) => group.proxies.map((name) => [name, group.name])));
+
+  const initialGroups = await readGroups();
+  const initialMap = groupByNode(initialGroups);
+  assert.ok(initialGroups.every((group) => group.proxies[0].startsWith('LDCAT-')));
+
+  const assignmentKey = [...kv.store.keys()].find((key) => key.startsWith('assignment:v1:'));
+  const legacyState = JSON.parse(kv.store.get(assignmentKey));
+  legacyState.version = 1;
+  for (const group of [0, 1]) {
+    const assignments = Object.values(legacyState.assignments).filter((assignment) => assignment.group === group).sort((left, right) => left.order - right.order);
+    assert.equal(assignments.length, 2);
+    assignments[0].order = 1;
+    assignments[1].order = 0;
+  }
+  kv.store.set(assignmentKey, JSON.stringify(legacyState));
+
+  const migratedGroups = await readGroups();
+  const migratedMap = groupByNode(migratedGroups);
+  for (const node of allNodes) assert.equal(migratedMap.get(node.name), initialMap.get(node.name));
+  assert.ok(migratedGroups.every((group) => group.proxies[0].startsWith('LDCAT-')));
+  assert.equal(JSON.parse(kv.store.get(assignmentKey)).version, 2);
+
+  const replacementGroups = await readGroups();
+  assert.ok(replacementGroups.every((group) => group.proxies[0].startsWith('红杏2-')));
+
+  const restoredGroups = await readGroups();
+  const restoredMap = groupByNode(restoredGroups);
+  assert.ok(restoredGroups.every((group) => group.proxies[0].startsWith('红杏2-')));
+  for (const node of allNodes) assert.equal(restoredMap.get(node.name), initialMap.get(node.name));
 });
 
 test('keeps surviving nodes on the same ports and fills holes without changing the first node', async () => {

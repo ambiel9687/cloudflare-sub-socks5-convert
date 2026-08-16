@@ -4861,6 +4861,7 @@ async function distributeProxies(metadata, groupCount, assignmentState) {
     for (const group of groups) group.nodes.sort(compareProxyMetadata);
     return { groups, assignmentState: void 0 };
   }
+  const needsPriorityMigration = assignmentState.version === 1;
   const previousUpdatedAt = Number(assignmentState.updatedAt) || 0;
   const now = Math.max(Date.now(), previousUpdatedAt + 1);
   const retainedAssignments = {};
@@ -4895,13 +4896,18 @@ async function distributeProxies(metadata, groupCount, assignmentState) {
   }
   const nextAssignments = retainedAssignments;
   for (const group of groups) {
+    const primaryStillExists = group.buckets.some((bucket) => bucket.assignment?.group === group.index && bucket.assignment.order === 0 && bucket.assignment.lastSeenAt === previousUpdatedAt);
+    if (needsPriorityMigration || !primaryStillExists) {
+      group.buckets.sort(compareHashBuckets);
+      group.nodes = group.buckets.flatMap((bucket) => bucket.nodes);
+    }
     group.buckets.forEach((bucket, order) => {
       nextAssignments[bucket.persistentHash] = { group: group.index, order, lastSeenAt: now };
     });
   }
   return {
     groups,
-    assignmentState: { version: 1, updatedAt: now, assignments: nextAssignments }
+    assignmentState: { version: 2, updatedAt: now, assignments: nextAssignments }
   };
 }
 __name(distributeProxies, "distributeProxies");
@@ -5207,13 +5213,13 @@ function getPortAssignmentKV(env) {
 }
 __name(getPortAssignmentKV, "getPortAssignmentKV");
 function isValidAssignmentState(value) {
-  return value?.version === 1 && Number.isFinite(value.updatedAt) && value.updatedAt >= 0 && value.assignments && typeof value.assignments === "object" && Object.entries(value.assignments).every(([nodeHash, assignment]) => /^[a-f0-9]{64}$/.test(nodeHash) && Number.isInteger(assignment.group) && assignment.group >= 0 && Number.isInteger(assignment.order) && assignment.order >= 0 && Number.isFinite(assignment.lastSeenAt) && assignment.lastSeenAt >= 0 && assignment.lastSeenAt <= value.updatedAt);
+  return (value?.version === 1 || value?.version === 2) && Number.isFinite(value.updatedAt) && value.updatedAt >= 0 && value.assignments && typeof value.assignments === "object" && Object.entries(value.assignments).every(([nodeHash, assignment]) => /^[a-f0-9]{64}$/.test(nodeHash) && Number.isInteger(assignment.group) && assignment.group >= 0 && Number.isInteger(assignment.order) && assignment.order >= 0 && Number.isFinite(assignment.lastSeenAt) && assignment.lastSeenAt >= 0 && assignment.lastSeenAt <= value.updatedAt);
 }
 __name(isValidAssignmentState, "isValidAssignmentState");
 async function readAssignmentState(kv, key) {
   try {
     const value = await kv.get(key, "json");
-    if (value === null) return { version: 1, updatedAt: 0, assignments: {} };
+    if (value === null) return { version: 2, updatedAt: 0, assignments: {} };
     if (!isValidAssignmentState(value)) throw new Error("invalid assignment state");
     return value;
   } catch (error) {
@@ -5455,7 +5461,7 @@ dns:
   if (kv) {
     [assignmentKey, resultKey] = await Promise.all([
       sha256Text(JSON.stringify([normalizedSubscriptionUrl, params.startPort, params.maxPorts])).then((hash) => `assignment:v1:${hash}`),
-      sha256Text(JSON.stringify([normalizedSubscriptionUrl, params.startPort, params.maxPorts, params.auth?.username || "", params.auth?.password || ""])).then((hash) => `result:v1:${hash}`)
+      sha256Text(JSON.stringify([normalizedSubscriptionUrl, params.startPort, params.maxPorts, params.auth?.username || "", params.auth?.password || ""])).then((hash) => `result:v2:${hash}`)
     ]);
     if (params.cache) {
       const cachedResult = await readResultCache(kv, resultKey);
