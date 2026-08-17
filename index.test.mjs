@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import worker from './index.js';
 
 const proxies = [
@@ -124,6 +125,21 @@ async function fetchPreview({ kv, fetchImpl, cache = true }) {
   }
 }
 
+function persistentNodeHash(proxy) {
+  const canonicalize = (value, omitName = false) => {
+    if (Array.isArray(value)) return value.map((item) => canonicalize(item));
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.keys(value).sort().filter((key) => !omitName || key !== 'name').map((key) => [key, canonicalize(value[key])]));
+  };
+  return createHash('sha256').update(JSON.stringify(canonicalize(proxy, true))).digest('hex');
+}
+
+function assignedGroupMap(kv, items, startPort = 31000) {
+  const assignmentKey = [...kv.store.keys()].find((key) => key.startsWith('assignment:v1:'));
+  const state = JSON.parse(kv.store.get(assignmentKey));
+  return new Map(items.map((item) => [item.name, `PORT-${startPort + state.assignments[persistentNodeHash(item)].group}`]));
+}
+
 function parseConfig(config) {
   const listeners = [];
   const groups = [];
@@ -146,6 +162,11 @@ function parseConfig(config) {
   return { listeners, groups };
 }
 
+function referencedNodeNames(groups, items) {
+  const names = new Set(items.map((item) => item.name));
+  return new Set(groups.flatMap((group) => group.proxies).filter((name) => names.has(name)));
+}
+
 test('uses default 20 ordinary ports plus ten fixed region ports', async () => {
   const { response, data } = await convert({ content: yamlFor(manyProxies), auth: null });
   const { listeners, groups } = parseConfig(data.config);
@@ -161,11 +182,12 @@ test('uses default 20 ordinary ports plus ten fixed region ports', async () => {
     ...Array.from({ length: 10 }, (_, index) => 20001 + index)
   ]);
   assert.ok(groups.some((group) => group.name === 'AUTO-BEST' && group.type === 'url-test'));
-  assert.ok(listeners.every((listener) => listener.proxy.endsWith('-ROUTE')));
+  assert.ok(listeners.every((listener) => /^(?:PORT-|REGION-)/.test(listener.proxy) && !listener.proxy.endsWith('-ROUTE')));
+  assert.ok(groups.filter((group) => /^(?:PORT-|REGION-)/.test(group.name)).every((group) => group.type === 'fallback'));
   assert.match(data.config, /profile:\n  store-selected: true/);
 });
 
-test('balances nodes once and builds manual select groups with hidden failover routes', async () => {
+test('builds direct fallback port groups with optimized health checks', async () => {
   const { response, data } = await convert({
     content: yamlFor(),
     startPort: 31000,
@@ -179,9 +201,8 @@ test('balances nodes once and builds manual select groups with hidden failover r
     'f.example.com': ['198.51.100.40']
   }));
   const { listeners, groups } = parseConfig(data.config);
-  const ordinarySelects = groups.filter((group) => /^PORT-3100[01]$/.test(group.name));
-  const ordinaryRoutes = groups.filter((group) => /^PORT-3100[01]-ROUTE$/.test(group.name));
-  const assigned = ordinarySelects.flatMap((group) => group.proxies);
+  const ordinaryGroups = groups.filter((group) => /^PORT-3100[01]$/.test(group.name));
+  const referencedNodes = referencedNodeNames(ordinaryGroups, proxies);
 
   assert.equal(response.status, 200);
   assert.equal(data.genericPortCount, 2);
@@ -189,19 +210,36 @@ test('balances nodes once and builds manual select groups with hidden failover r
   assert.equal(data.uniqueEndpointCount, 6);
   assert.equal('uniqueIPv4Count' in data, false);
   assert.equal('unresolvedHostCount' in data, false);
-  assert.equal(new Set(assigned).size, proxies.length);
-  assert.deepEqual([...assigned].sort(), proxies.map((proxy) => proxy.name).sort());
-  assert.deepEqual(ordinarySelects.map((group) => group.proxies.length), [3, 3]);
-  assert.ok(ordinarySelects.every((group) => group.type === 'select'));
-  assert.ok(ordinaryRoutes.every((group) => group.type === 'fallback' && group.hidden === 'true'));
-  for (const select of ordinarySelects) {
-    const route = groups.find((group) => group.name === `${select.name}-ROUTE`);
-    assert.deepEqual(route.proxies, [select.name, ...select.proxies, 'AUTO-BEST']);
-  }
-  assert.equal(groups.some((group) => /^(?:PORT-|REGION-).+-BEST$/.test(group.name)), false);
-  assert.equal(listeners.find((listener) => listener.port === '31000').proxy, 'PORT-31000-ROUTE');
+  assert.deepEqual([...referencedNodes].sort(), proxies.map((proxy) => proxy.name).sort());
+  assert.ok(ordinaryGroups.every((group) => group.type === 'fallback' && group.proxies.at(-1) === 'AUTO-BEST'));
+  assert.equal(groups.some((group) => group.name.endsWith('-ROUTE')), false);
+  assert.equal(listeners.find((listener) => listener.port === '31000').proxy, 'PORT-31000');
   assert.match(data.config, /expected-status: 204/);
+  assert.match(data.config, /interval: 60/);
+  assert.match(data.config, /timeout: 3000/);
+  assert.match(data.config, /max-failed-times: 2/);
   assert.match(data.config, /username: user/);
+});
+
+test('cycles HK TW US JP KR SG region groups across ordinary ports', async () => {
+  const codes = ['HK', 'TW', 'US', 'JP', 'KR', 'SG'];
+  const items = codes.flatMap((code) => [0, 1].map((index) => ({
+    ...proxies[0],
+    name: `SubA-${code}-${index}`,
+    server: `${code.toLowerCase()}-${index}.example.com`,
+    password: `${code}-${index}`
+  })));
+  const { data } = await convert({ content: yamlFor(items), startPort: 31000, maxPorts: 12 });
+  const groups = parseConfig(data.config).groups.filter((group) => /^PORT-310(?:0[0-9]|1[01])$/.test(group.name));
+
+  assert.equal(groups.length, 12);
+  groups.forEach((group, index) => {
+    const code = codes[index % codes.length];
+    assert.equal(group.type, 'fallback');
+    assert.equal(group.proxies.at(-2), `REGION-${code}-${20001 + codes.indexOf(code)}`);
+    assert.equal(group.proxies.at(-1), 'AUTO-BEST');
+    assert.equal(group.proxies.length, 3);
+  });
 });
 
 test('recognizes fixed region ports by node name and lets empty regions fall back globally', async () => {
@@ -215,26 +253,21 @@ test('recognizes fixed region ports by node name and lets empty regions fall bac
   }));
   const { listeners, groups } = parseConfig(data.config);
   const hk = groups.find((group) => group.name === 'REGION-HK-20001');
-  const hkRoute = groups.find((group) => group.name === 'REGION-HK-20001-ROUTE');
   const tw = groups.find((group) => group.name === 'REGION-TW-20002');
-  const twRoute = groups.find((group) => group.name === 'REGION-TW-20002-ROUTE');
   const us = groups.find((group) => group.name === 'REGION-US-20003');
-  const usRoute = groups.find((group) => group.name === 'REGION-US-20003-ROUTE');
   const jp = groups.find((group) => group.name === 'REGION-JP-20004');
   const gb = groups.find((group) => group.name === 'REGION-GB-20007');
   const de = groups.find((group) => group.name === 'REGION-DE-20008');
 
   assert.equal(response.status, 200);
-  assert.deepEqual(hk.proxies, ['🇭🇰 HK-A', '香港-B']);
-  assert.deepEqual(hkRoute.proxies, ['REGION-HK-20001', '🇭🇰 HK-A', '香港-B', 'AUTO-BEST']);
+  assert.deepEqual(hk.proxies, ['🇭🇰 HK-A', '香港-B', 'AUTO-BEST']);
   assert.deepEqual(tw.proxies, ['AUTO-BEST']);
-  assert.deepEqual(twRoute.proxies, ['REGION-TW-20002', 'AUTO-BEST']);
-  assert.deepEqual(us.proxies, ['🇺🇸 US-A']);
-  assert.deepEqual(usRoute.proxies, ['REGION-US-20003', '🇺🇸 US-A', 'AUTO-BEST']);
-  assert.deepEqual(jp.proxies, ['Japan-A']);
+  assert.deepEqual(us.proxies, ['🇺🇸 US-A', 'AUTO-BEST']);
+  assert.deepEqual(jp.proxies, ['Japan-A', 'AUTO-BEST']);
   assert.deepEqual(gb.proxies, ['AUTO-BEST']);
   assert.deepEqual(de.proxies, ['AUTO-BEST']);
-  assert.equal(listeners.find((listener) => listener.port === '20001').proxy, 'REGION-HK-20001-ROUTE');
+  assert.ok([hk, tw, us, jp, gb, de].every((group) => group.type === 'fallback'));
+  assert.equal(listeners.find((listener) => listener.port === '20001').proxy, 'REGION-HK-20001');
 });
 
 
@@ -248,18 +281,17 @@ test('keeps equal node hashes in one ordinary port group', async () => {
     { ...shared, name: 'SubA-HK-distinct-2', password: 'two' }
   ];
   const { response, data } = await convert({ content: yamlFor(items), startPort: 31000, maxPorts: 3 });
-  const ordinarySelects = parseConfig(data.config).groups.filter((group) => /^PORT-3100[0-2]$/.test(group.name));
-  const sharedGroups = ordinarySelects.filter((group) => group.proxies.some((name) => name.includes('-shared-')));
+  const ordinaryGroups = parseConfig(data.config).groups.filter((group) => /^PORT-3100[0-2]$/.test(group.name));
+  const sharedNames = ['SubA-HK-shared-1', 'SubA-HK-shared-2', 'SubB-US-shared-1'];
+  const sharedGroups = ordinaryGroups.filter((group) => sharedNames.every((name) => group.proxies.includes(name)));
+  const referencedNodes = referencedNodeNames(ordinaryGroups, items);
 
   assert.equal(response.status, 200);
   assert.equal(data.uniqueEndpointCount, 1);
   assert.equal(sharedGroups.length, 1);
-  assert.deepEqual(sharedGroups[0].proxies.filter((name) => name.includes('-shared-')), [
-    'SubA-HK-shared-1',
-    'SubA-HK-shared-2',
-    'SubB-US-shared-1'
-  ]);
-  assert.deepEqual(ordinarySelects.flatMap((group) => group.proxies).sort(), items.map((item) => item.name).sort());
+  assert.deepEqual(sharedGroups[0].proxies.filter((name) => sharedNames.includes(name)), sharedNames);
+  assert.ok(ordinaryGroups.filter((group) => group !== sharedGroups[0]).every((group) => group.proxies.filter((name) => sharedNames.includes(name)).length <= 1));
+  assert.deepEqual([...referencedNodes].sort(), items.map((item) => item.name).sort());
 });
 
 test('treats changed connection parameters as different hash buckets', async () => {
@@ -270,10 +302,10 @@ test('treats changed connection parameters as different hash buckets', async () 
     { ...shared, name: 'SubA-HK-3', password: 'three' }
   ];
   const { response, data } = await convert({ content: yamlFor(items), startPort: 31000, maxPorts: 3 });
-  const ordinarySelects = parseConfig(data.config).groups.filter((group) => /^PORT-3100[0-2]$/.test(group.name));
+  const ordinaryGroups = parseConfig(data.config).groups.filter((group) => /^PORT-3100[0-2]$/.test(group.name));
 
   assert.equal(response.status, 200);
-  assert.deepEqual(ordinarySelects.map((group) => group.proxies.length), [1, 1, 1]);
+  assert.deepEqual(ordinaryGroups.map((group) => group.proxies[0]).sort(), items.map((item) => item.name).sort());
 });
 
 test('does not resolve DNS when assigning nodes', async () => {
@@ -304,7 +336,7 @@ test('derives subscription priority and region order from node names', async () 
   const { response, data } = await convert({ content: yamlFor(items), startPort: 31000, maxPorts: 6 });
   const { groups } = parseConfig(data.config);
   const autoBest = groups.find((group) => group.name === 'AUTO-BEST');
-  const ordinarySelects = groups.filter((group) => /^PORT-3100[0-5]$/.test(group.name));
+  const ordinaryGroups = groups.filter((group) => /^PORT-3100[0-5]$/.test(group.name));
 
   assert.equal(response.status, 200);
   assert.equal(autoBest.type, 'url-test');
@@ -319,9 +351,8 @@ test('derives subscription priority and region order from node names', async () 
     'SubC-Other-1',
     'NoSeparator'
   ]);
-  assert.ok(ordinarySelects.every((group) => group.proxies.filter((name) => name.startsWith('SubB-')).length <= 1));
-  assert.ok(ordinarySelects.every((group) => group.proxies[0].startsWith('SubB-')));
-  assert.deepEqual(ordinarySelects.flatMap((group) => group.proxies).sort(), items.map((item) => item.name).sort());
+  assert.ok(ordinaryGroups.every((group) => group.proxies[0].startsWith('SubB-')));
+  assert.deepEqual([...referencedNodeNames(ordinaryGroups, items)].sort(), items.map((item) => item.name).sort());
 });
 
 test('uses lower-priority subscriptions only after higher-priority hashes run out', async () => {
@@ -352,13 +383,14 @@ test('handles 1000 nodes while keeping each hash bucket atomic', { timeout: 1000
     };
   });
   const { response, data } = await convert({ content: yamlFor(items), startPort: 31000, maxPorts: 20 });
-  const ordinarySelects = parseConfig(data.config).groups.filter((group) => /^PORT-310(?:0[0-9]|1[0-9])$/.test(group.name));
-  const groupByNode = new Map(ordinarySelects.flatMap((group) => group.proxies.map((name) => [name, group.name])));
+  const ordinaryGroups = parseConfig(data.config).groups.filter((group) => /^PORT-310(?:0[0-9]|1[0-9])$/.test(group.name));
+  const referencedNodes = referencedNodeNames(ordinaryGroups, items);
 
   assert.equal(response.status, 200);
-  assert.equal(groupByNode.size, items.length);
+  assert.equal(referencedNodes.size, items.length);
   for (let identity = 0; identity < 250; identity++) {
-    assert.equal(new Set(items.filter((_, index) => index % 250 === identity).map((item) => groupByNode.get(item.name))).size, 1);
+    const bucketNames = items.filter((_, index) => index % 250 === identity).map((item) => item.name);
+    assert.equal(ordinaryGroups.filter((group) => bucketNames.every((name) => group.proxies.includes(name))).length, 1);
   }
 });
 
@@ -483,7 +515,7 @@ test('caches generated subscriptions for five minutes and supports cache=false r
   assert.equal(await cachedRefresh.text(), refreshedBody);
   assert.equal(upstream.calls(), 2);
 
-  const resultKey = [...kv.store.keys()].find((key) => key.startsWith('result:v2:'));
+  const resultKey = [...kv.store.keys()].find((key) => key.startsWith('result:v3:'));
   const stale = JSON.parse(kv.store.get(resultKey));
   stale.generatedAt = new Date(Date.now() - 301_000).toISOString();
   kv.store.set(resultKey, JSON.stringify(stale));
@@ -492,11 +524,11 @@ test('caches generated subscriptions for five minutes and supports cache=false r
 
   await subscribe({ kv, fetchImpl: upstream.fetch, auth: { username: 'user', password: 'pass' } });
   assert.equal(upstream.calls(), 4);
-  assert.ok(kv.putCalls.some((call) => call.key.startsWith('result:v2:') && call.options.expirationTtl === 300));
+  assert.ok(kv.putCalls.some((call) => call.key.startsWith('result:v3:') && call.options.expirationTtl === 300));
   assert.ok(kv.putCalls.some((call) => call.key.startsWith('assignment:v1:') && call.options.expirationTtl === 7_776_000));
 });
 
-test('migrates legacy order without moving ports and keeps replacement primaries stable', async () => {
+test('keeps prior ports but always reapplies subscription and region priority', async () => {
   const kv = new FakeKV();
   const ldcatA = { ...proxies[0], name: 'LDCAT-HK-1', server: 'legacy-ldcat-a.example.com' };
   const ldcatB = { ...proxies[1], name: 'LDCAT-US-2', server: 'legacy-ldcat-b.example.com' };
@@ -513,39 +545,36 @@ test('migrates legacy order without moving ports and keeps replacement primaries
     const response = await subscribe({ kv, fetchImpl: upstream.fetch, cache: false, maxPorts: 2 });
     return parseConfig(await response.text()).groups.filter((group) => /^PORT-3100[01]$/.test(group.name));
   };
-  const groupByNode = (groups) => new Map(groups.flatMap((group) => group.proxies.map((name) => [name, group.name])));
-
   const initialGroups = await readGroups();
-  const initialMap = groupByNode(initialGroups);
+  const initialMap = assignedGroupMap(kv, allNodes);
   assert.ok(initialGroups.every((group) => group.proxies[0].startsWith('LDCAT-')));
 
   const assignmentKey = [...kv.store.keys()].find((key) => key.startsWith('assignment:v1:'));
-  const legacyState = JSON.parse(kv.store.get(assignmentKey));
-  legacyState.version = 1;
+  const savedState = JSON.parse(kv.store.get(assignmentKey));
   for (const group of [0, 1]) {
-    const assignments = Object.values(legacyState.assignments).filter((assignment) => assignment.group === group).sort((left, right) => left.order - right.order);
+    const assignments = Object.values(savedState.assignments).filter((assignment) => assignment.group === group).sort((left, right) => left.order - right.order);
     assert.equal(assignments.length, 2);
     assignments[0].order = 1;
     assignments[1].order = 0;
   }
-  kv.store.set(assignmentKey, JSON.stringify(legacyState));
+  kv.store.set(assignmentKey, JSON.stringify(savedState));
 
-  const migratedGroups = await readGroups();
-  const migratedMap = groupByNode(migratedGroups);
-  for (const node of allNodes) assert.equal(migratedMap.get(node.name), initialMap.get(node.name));
-  assert.ok(migratedGroups.every((group) => group.proxies[0].startsWith('LDCAT-')));
+  const reorderedGroups = await readGroups();
+  const reorderedMap = assignedGroupMap(kv, allNodes);
+  for (const node of allNodes) assert.equal(reorderedMap.get(node.name), initialMap.get(node.name));
+  assert.ok(reorderedGroups.every((group) => group.proxies[0].startsWith('LDCAT-')));
   assert.equal(JSON.parse(kv.store.get(assignmentKey)).version, 2);
 
   const replacementGroups = await readGroups();
   assert.ok(replacementGroups.every((group) => group.proxies[0].startsWith('红杏2-')));
 
   const restoredGroups = await readGroups();
-  const restoredMap = groupByNode(restoredGroups);
-  assert.ok(restoredGroups.every((group) => group.proxies[0].startsWith('红杏2-')));
+  const restoredMap = assignedGroupMap(kv, allNodes);
+  assert.ok(restoredGroups.every((group) => group.proxies[0].startsWith('LDCAT-')));
   for (const node of allNodes) assert.equal(restoredMap.get(node.name), initialMap.get(node.name));
 });
 
-test('keeps surviving nodes on the same ports and fills holes without changing the first node', async () => {
+test('keeps surviving nodes on the same ports and prunes missing history after 30 days', async () => {
   const kv = new FakeKV();
   const a = { ...proxies[0], name: 'SubA-HK-A', server: 'sticky-a.example.com' };
   const b = { ...proxies[1], name: 'SubA-US-B', server: 'sticky-b.example.com' };
@@ -561,32 +590,33 @@ test('keeps surviving nodes on the same ports and fills holes without changing t
     const response = await subscribe({ kv, fetchImpl: upstream.fetch, cache: false });
     return parseConfig(await response.text()).groups.filter((group) => /^PORT-3100[0-2]$/.test(group.name));
   };
-  const groupByNode = (groups) => new Map(groups.flatMap((group) => group.proxies.map((name) => [name, group.name])));
-
   const firstGroups = await ordinaryGroups();
-  const firstMap = groupByNode(firstGroups);
+  const firstMap = assignedGroupMap(kv, [a, b, c]);
   const secondGroups = await ordinaryGroups();
-  const secondMap = groupByNode(secondGroups);
+  const secondMap = assignedGroupMap(kv, [a, c, d]);
 
   assert.equal(secondMap.get(a.name), firstMap.get(a.name));
   assert.equal(secondMap.get(c.name), firstMap.get(c.name));
   assert.equal(secondMap.get(d.name), firstMap.get(b.name));
 
   const thirdGroups = await ordinaryGroups();
-  const thirdMap = groupByNode(thirdGroups);
+  const thirdMap = assignedGroupMap(kv, [a, b, c, d]);
   assert.equal(thirdMap.get(a.name), firstMap.get(a.name));
   assert.equal(thirdMap.get(b.name), firstMap.get(b.name));
   assert.equal(thirdMap.get(c.name), firstMap.get(c.name));
   assert.equal(thirdMap.get(d.name), firstMap.get(b.name));
   const sharedGroup = thirdGroups.find((group) => group.name === firstMap.get(b.name));
-  assert.ok(sharedGroup.proxies.indexOf(d.name) < sharedGroup.proxies.indexOf(b.name));
+  assert.ok(sharedGroup.proxies.indexOf(b.name) < sharedGroup.proxies.indexOf(d.name));
 
   const assignmentKey = [...kv.store.keys()].find((key) => key.startsWith('assignment:v1:'));
   const state = JSON.parse(kv.store.get(assignmentKey));
-  state.assignments['f'.repeat(64)] = { group: 0, order: 99, lastSeenAt: 0 };
+  const dayMs = 24 * 60 * 60 * 1000;
+  state.assignments['e'.repeat(64)] = { group: 0, order: 98, lastSeenAt: state.updatedAt - 29 * dayMs };
+  state.assignments['f'.repeat(64)] = { group: 0, order: 99, lastSeenAt: state.updatedAt - 31 * dayMs };
   kv.store.set(assignmentKey, JSON.stringify(state));
   await ordinaryGroups();
   const prunedState = JSON.parse(kv.store.get(assignmentKey));
+  assert.equal('e'.repeat(64) in prunedState.assignments, true);
   assert.equal('f'.repeat(64) in prunedState.assignments, false);
   assert.ok(Object.keys(prunedState.assignments).every((hash) => /^[a-f0-9]{64}$/.test(hash)));
   assert.doesNotMatch(kv.store.get(assignmentKey), /sticky-|secret-/);
@@ -615,8 +645,8 @@ test('keeps 1000-node assignments stable across forced refreshes', { timeout: 10
   const upstream = createUpstream([yamlFor(items), yamlFor([...items].reverse())]);
   const readAssignments = async () => {
     const response = await subscribe({ kv, fetchImpl: upstream.fetch, cache: false, startPort: 31000, maxPorts: 20 });
-    const groups = parseConfig(await response.text()).groups.filter((group) => /^PORT-310(?:0[0-9]|1[0-9])$/.test(group.name));
-    return new Map(groups.flatMap((group) => group.proxies.map((name) => [name, group.name])));
+    await response.text();
+    return assignedGroupMap(kv, items);
   };
 
   const first = await readAssignments();

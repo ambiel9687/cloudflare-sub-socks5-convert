@@ -4609,7 +4609,7 @@ var DEFAULT_MAX_PORTS = 20;
 var MAX_PORT_GROUPS = 100;
 var RESULT_CACHE_TTL_SECONDS = 300;
 var ASSIGNMENT_TTL_SECONDS = 90 * 24 * 60 * 60;
-var ASSIGNMENT_RETENTION_MS = ASSIGNMENT_TTL_SECONDS * 1e3;
+var ASSIGNMENT_RETENTION_MS = 30 * 24 * 60 * 60 * 1e3;
 var PREFERRED_REGION_RANKS = new Map(["HK", "US", "TW", "SG", "KR", "JP"].map((code, index) => [code, index]));
 var REGION_PORTS = [
   { code: "HK", port: 20001, pattern: /🇭🇰|香港|hong[\s_-]*kong|(?:^|[^a-z])hk(?:$|[^a-z])/i },
@@ -4740,22 +4740,27 @@ async function resolveProxyGroups(proxies, startPort, maxPorts, assignmentState)
   const genericGroups = distribution.groups;
   const proxyGroups = [createUrlTestGroup(autoBestName, proxyNames)];
   const listeners = [];
-  const addPortGroup = (port, baseName, nodes) => {
-    const nodeNames = nodes.map((node) => node.name);
-    const selectName = createUniqueName(baseName, usedNames);
-    proxyGroups.push(createSelectGroup(selectName, nodeNames.length > 0 ? nodeNames : [autoBestName]));
-    const routeName = createUniqueName(`${selectName}-ROUTE`, usedNames);
-    proxyGroups.push(createFallbackGroup(routeName, [selectName, ...nodeNames, autoBestName], true));
+  const regionGroupNames = new Map(REGION_PORTS.map((region) => [
+    region.code,
+    createUniqueName(`REGION-${region.code}-${region.port}`, usedNames)
+  ]));
+  const addPortGroup = (port, groupName, nodes, extraProxies = []) => {
+    proxyGroups.push(createFallbackGroup(groupName, [...nodes.map((node) => node.name), ...extraProxies, autoBestName]));
     listeners.push({
       name: `mixed-${port}`,
       type: "mixed",
       port,
-      proxy: routeName
+      proxy: groupName
     });
   };
-  genericGroups.forEach((group, index) => addPortGroup(startPort + index, `PORT-${startPort + index}`, group.nodes));
+  const backupRegions = REGION_PORTS.slice(0, 6);
+  genericGroups.forEach((group, index) => {
+    const backupRegion = backupRegions[index % backupRegions.length];
+    const port = startPort + index;
+    addPortGroup(port, createUniqueName(`PORT-${port}`, usedNames), group.nodes, [regionGroupNames.get(backupRegion.code)]);
+  });
   for (const region of REGION_PORTS) {
-    addPortGroup(region.port, `REGION-${region.code}-${region.port}`, regionNodes.get(region.code));
+    addPortGroup(region.port, regionGroupNames.get(region.code), regionNodes.get(region.code));
   }
   return {
     listeners,
@@ -4861,7 +4866,6 @@ async function distributeProxies(metadata, groupCount, assignmentState) {
     for (const group of groups) group.nodes.sort(compareProxyMetadata);
     return { groups, assignmentState: void 0 };
   }
-  const needsPriorityMigration = assignmentState.version === 1;
   const previousUpdatedAt = Number(assignmentState.updatedAt) || 0;
   const now = Math.max(Date.now(), previousUpdatedAt + 1);
   const retainedAssignments = {};
@@ -4896,11 +4900,8 @@ async function distributeProxies(metadata, groupCount, assignmentState) {
   }
   const nextAssignments = retainedAssignments;
   for (const group of groups) {
-    const primaryStillExists = group.buckets.some((bucket) => bucket.assignment?.group === group.index && bucket.assignment.order === 0 && bucket.assignment.lastSeenAt === previousUpdatedAt);
-    if (needsPriorityMigration || !primaryStillExists) {
-      group.buckets.sort(compareHashBuckets);
-      group.nodes = group.buckets.flatMap((bucket) => bucket.nodes);
-    }
+    group.buckets.sort(compareHashBuckets);
+    group.nodes = group.buckets.flatMap((bucket) => bucket.nodes);
     group.buckets.forEach((bucket, order) => {
       nextAssignments[bucket.persistentHash] = { group: group.index, order, lastSeenAt: now };
     });
@@ -4943,14 +4944,6 @@ function normalizeEndpointKey(server) {
   return String(server ?? "").trim().toLowerCase().replace(/\.$/, "");
 }
 __name(normalizeEndpointKey, "normalizeEndpointKey");
-function createSelectGroup(name, proxies) {
-  return {
-    name,
-    type: "select",
-    proxies
-  };
-}
-__name(createSelectGroup, "createSelectGroup");
 function createUrlTestGroup(name, proxies, hidden = false) {
   return {
     name,
@@ -4966,17 +4959,17 @@ function createUrlTestGroup(name, proxies, hidden = false) {
   };
 }
 __name(createUrlTestGroup, "createUrlTestGroup");
-function createFallbackGroup(name, proxies, hidden = false) {
+function createFallbackGroup(name, proxies) {
   return {
     name,
     type: "fallback",
     proxies,
     url: HEALTH_CHECK_URL,
     "expected-status": 204,
-    interval: 300,
-    timeout: 5e3,
-    lazy: false,
-    hidden
+    interval: 60,
+    timeout: 3e3,
+    "max-failed-times": 2,
+    lazy: false
   };
 }
 __name(createFallbackGroup, "createFallbackGroup");
@@ -5461,7 +5454,7 @@ dns:
   if (kv) {
     [assignmentKey, resultKey] = await Promise.all([
       sha256Text(JSON.stringify([normalizedSubscriptionUrl, params.startPort, params.maxPorts])).then((hash) => `assignment:v1:${hash}`),
-      sha256Text(JSON.stringify([normalizedSubscriptionUrl, params.startPort, params.maxPorts, params.auth?.username || "", params.auth?.password || ""])).then((hash) => `result:v2:${hash}`)
+      sha256Text(JSON.stringify([normalizedSubscriptionUrl, params.startPort, params.maxPorts, params.auth?.username || "", params.auth?.password || ""])).then((hash) => `result:v3:${hash}`)
     ]);
     if (params.cache) {
       const cachedResult = await readResultCache(kv, resultKey);
